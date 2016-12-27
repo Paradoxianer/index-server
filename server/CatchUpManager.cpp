@@ -88,7 +88,12 @@ CatchUpAnalyser::_CatchUp()
 	query.PushOp(B_AND);
 
 	query.Fetch();
-
+	
+	int32  pLength = query.PredicateLength();
+	char predicate[pLength+1];
+	query.GetPredicate(predicate,pLength);
+	printf("catchup query: %s \n",predicate);
+	
 	std::vector<entry_ref> entryList;
 	entry_ref ref;
 	while (query.GetNextRef(&ref) == B_OK)
@@ -203,8 +208,8 @@ bool
 CatchUpManager::CatchUp()
 {
 	STRACE("CatchUpManager::CatchUp()\n");
-	bigtime_t startBig = real_time_clock_usecs();
-	bigtime_t endBig = 0;
+	bigtime_t startBig  = 0;
+	bigtime_t endBig = real_time_clock_usecs();
 	for (int i = 0; i < fFileAnalyserQueue.CountItems(); i++) {
 		FileAnalyser* analyser = fFileAnalyserQueue.ItemAt(i);
  		analyser->UpdateSettingsCache();
