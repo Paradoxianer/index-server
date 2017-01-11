@@ -92,14 +92,14 @@ CatchUpAnalyser::_CatchUp()
 	int32  pLength = query.PredicateLength();
 	char predicate[pLength+1];
 	query.GetPredicate(predicate,pLength);
-	printf("catchup query: %s \n",predicate);
+	PRINT("catchup query: %s \n",predicate);
 	
 	std::vector<entry_ref> entryList;
 	entry_ref ref;
 	while (query.GetNextRef(&ref) == B_OK)
 		entryList.push_back(ref);
 
-	printf("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size());
+	PRINT("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size());
 
 	if (entryList.size() == 0)
 		return;
@@ -108,13 +108,13 @@ CatchUpAnalyser::_CatchUp()
 		if (Stopped())
 			return;
 		if (i % 100 == 0)
-			printf("Catch up: %i/%i\n", (int)i,(int)entryList.size());
+			print("Catch up: %i/%i\n", (int)i,(int)entryList.size());
 		AnalyseEntry(entryList[i]);
 	}
 	LastEntry();
 
 	_WriteSyncSatus(fEnd * kSecond);
-	printf("Catched up.\n");
+	print("Catched up.\n");
 
 	BMessenger managerMessenger(fCatchUpManager);
 	BMessage msg(kCatchUpDone);
