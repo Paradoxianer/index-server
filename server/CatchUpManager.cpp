@@ -92,14 +92,17 @@ CatchUpAnalyser::_CatchUp()
 	int32  pLength = query.PredicateLength();
 	char predicate[pLength+1];
 	query.GetPredicate(predicate,pLength);
-	PRINT("catchup query: %s \n",predicate);
+	PRINT(("catchup query: %s \n",predicate));
 	
 	std::vector<entry_ref> entryList;
 	entry_ref ref;
-	while (query.GetNextRef(&ref) == B_OK)
+	//TODO check if the ref is in a "disabled" path
+	while (query.GetNextRef(&ref) == B_OK) {
+		
 		entryList.push_back(ref);
+	}
 
-	PRINT("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size());
+	PRINT(("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size()));
 
 	if (entryList.size() == 0)
 		return;
@@ -108,13 +111,13 @@ CatchUpAnalyser::_CatchUp()
 		if (Stopped())
 			return;
 		if (i % 100 == 0)
-			print("Catch up: %i/%i\n", (int)i,(int)entryList.size());
+			printf("Catch up: %i/%i\n", (int)i,(int)entryList.size());
 		AnalyseEntry(entryList[i]);
 	}
 	LastEntry();
 
 	_WriteSyncSatus(fEnd * kSecond);
-	print("Catched up.\n");
+	printf(("Catched up.\n"));
 
 	BMessenger managerMessenger(fCatchUpManager);
 	BMessage msg(kCatchUpDone);
@@ -216,7 +219,7 @@ CatchUpManager::CatchUp()
 		const analyser_settings& settings = analyser->CachedSettings();
 		STRACE("%s, %i, %i\n", analyser->Name().String(),
 			  (int)settings.syncPosition, (int)settings.watchingStart);
-		if (settings.syncPosition < startBig)
+		if (startBig < settings.syncPosition )
 			startBig = settings.syncPosition;
 		if (settings.watchingStart > endBig)
 			endBig = settings.watchingStart;

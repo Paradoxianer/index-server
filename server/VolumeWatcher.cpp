@@ -16,6 +16,7 @@
 #include <Path.h>
 #include <VolumeRoster.h>
 #include <Query.h>
+#include <FindDirectory.h>
 
 
 #include "IndexServerPrivate.h"
@@ -348,19 +349,21 @@ const char* kEnabledAttr = "Enabled";
 bool
 VolumeWatcherBase::ReadSettings()
 {
-	// TODO remove this
 	BVolume bootVolume;
 	BVolumeRoster roster;
+	char volumenName[255];
 	roster.GetBootVolume(&bootVolume);
 	if (bootVolume == fVolume) {
 		fEnabled = true;
 		WriteSettings();
 	}
-
-	BDirectory rootDir;
-	fVolume.GetRootDirectory(&rootDir);
-	BPath path(&rootDir);
+	
+	fVolume.GetName(volumenName);
+	BPath path;
+	find_directory(B_USER_SETTINGS_DIRECTORY,&path);
+	
 	path.Append(kIndexServerDirectory);
+	path.Append(volumenName);
 	path.Append(kVolumeStatusFileName);
 	BFile file(path.Path(), B_READ_ONLY);
 	if (file.InitCheck() != B_OK)
@@ -369,7 +372,6 @@ VolumeWatcherBase::ReadSettings()
 	uint32 enabled;
 	file.WriteAttr(kEnabledAttr, B_UINT32_TYPE, 0, &enabled, sizeof(uint32));
 	fEnabled = enabled == 0 ? false : true;
-
 	return true;
 }
 
@@ -377,13 +379,16 @@ VolumeWatcherBase::ReadSettings()
 bool
 VolumeWatcherBase::WriteSettings()
 {
-	BDirectory rootDir;
-	fVolume.GetRootDirectory(&rootDir);
-	BPath path(&rootDir);
+	BPath path;
+	char volumenName[255];
+	find_directory(B_USER_SETTINGS_DIRECTORY,&path);
 	path.Append(kIndexServerDirectory);
 	if (create_directory(path.Path(), 777) != B_OK)
 		return false;
-
+	fVolume.GetName(volumenName);
+	path.Append(volumenName);
+	if (create_directory(path.Path(), 777) != B_OK)
+		return false;
 	path.Append(kVolumeStatusFileName);
 	BFile file(path.Path(), B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
@@ -391,7 +396,6 @@ VolumeWatcherBase::WriteSettings()
 
 	uint32 enabled = fEnabled ? 1 : 0;
 	file.WriteAttr(kEnabledAttr, B_UINT32_TYPE, 0, &enabled, sizeof(uint32));
-
 	return true;
 }
 

@@ -12,6 +12,7 @@
 #include <Directory.h>
 #include <File.h>
 #include <Path.h>
+#include <FindDirectory.h>
 
 #include "IndexServerPrivate.h"
 
@@ -49,11 +50,13 @@ bool
 AnalyserSettings::ReadSettings()
 {
 	BAutolock _(fSettingsLock);
+	BPath path;
+	char	volumenName[255];
+	fVolume.GetName(volumenName);
 
-	BDirectory rootDir;
-	fVolume.GetRootDirectory(&rootDir);
-	BPath path(&rootDir);
+	find_directory(B_USER_SETTINGS_DIRECTORY,&path);
 	path.Append(kIndexServerDirectory);
+	path.Append(volumenName);
 	path.Append(fName);
 	path.Append(kAnalyserStatusFile);
 
@@ -71,7 +74,6 @@ AnalyserSettings::ReadSettings()
 		&fAnalyserSettings.watchingStart, sizeof(int64));
 	file.ReadAttr(kWatchingPositionAttr, B_INT64_TYPE, 0,
 		&fAnalyserSettings.watchingPosition, sizeof(int64));
-
 	return true;
 }
 
@@ -80,11 +82,13 @@ bool
 AnalyserSettings::WriteSettings()
 {
 	BAutolock _(fSettingsLock);
+	BPath path;
+	char	volumenName[255];
+	fVolume.GetName(volumenName);
 
-	BDirectory rootDir;
-	fVolume.GetRootDirectory(&rootDir);
-	BPath path(&rootDir);
+	find_directory(B_USER_SETTINGS_DIRECTORY,&path);
 	path.Append(kIndexServerDirectory);
+	path.Append(volumenName);
 	path.Append(fName);
 	if (create_directory(path.Path(), 777) != B_OK)
 		return false;

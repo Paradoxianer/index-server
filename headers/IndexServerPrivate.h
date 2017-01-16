@@ -12,7 +12,7 @@
 #include <String.h>
 
 
-const BString kIndexServerDirectory = ".IndexServer";
+const BString kIndexServerDirectory = "index_server";
 const BString kVolumeStatusFileName = "VolumeStatus";
 
 // messages between preferences app
