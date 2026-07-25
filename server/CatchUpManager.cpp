@@ -159,7 +159,7 @@ CatchUpManager::~CatchUpManager()
 void
 CatchUpManager::MessageReceived(BMessage *message)
 {
-	CatchUpAnalyser* analyser;
+	CatchUpAnalyser* analyser = NULL;
 	switch (message->what) {
 		case kCatchUpDone:
 			message->GetPointer("Analyser", &analyser);
