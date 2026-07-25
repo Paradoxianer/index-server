@@ -18,6 +18,11 @@
 
 const char* kFullTextDirectory = "FullTextAnalyser";
 
+//! Files larger than this are skipped rather than handed to a translator;
+//! keeps a single oversized file (e.g. a video misidentified by a lenient
+//! translator) from dominating the indexing queue.
+const off_t kMaxIndexableFileSize = 32 * 1024 * 1024;
+
 
 class FullTextAnalyser : public FileAnalyser {
 public:

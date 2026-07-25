@@ -16,6 +16,7 @@
 
 #include "CLuceneDataBase.h"
 #include "IndexServerPrivate.h"
+#include "TranslatorTimeout.h"
 
 
 #define DEBUG_FULLTEXT_ANALYSER
@@ -25,6 +26,32 @@
 #else
 #	define STRACE(x...) ;
 #endif
+
+
+// Identify() is normally just header sniffing, but a misbehaving translator
+// must not be allowed to stall the whole VolumeWorker thread over it.
+const bigtime_t kIdentifyTimeout = 5 * 1000000;
+
+
+namespace {
+
+
+struct identify_cookie {
+	BPositionIO*		source;
+	translator_info*	info;
+};
+
+
+status_t
+do_identify(void* data)
+{
+	identify_cookie* cookie = (identify_cookie*)data;
+	return BTranslatorRoster::Default()->Identify(cookie->source, NULL,
+		cookie->info, 0, NULL, B_TRANSLATOR_TEXT);
+}
+
+
+}	// namespace
 
 
 FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)
@@ -114,9 +141,14 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		return false;
 
 	BFile file(&ref, B_READ_ONLY);
+	off_t size;
+	if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
+		|| size > kMaxIndexableFileSize)
+		return false;
+
 	translator_info translatorInfo;
-	if (BTranslatorRoster::Default()->Identify(&file, NULL, &translatorInfo, 0,
-		NULL, B_TRANSLATOR_TEXT) != B_OK)
+	identify_cookie cookie = { &file, &translatorInfo };
+	if (run_with_timeout(do_identify, &cookie, kIdentifyTimeout) != B_OK)
 		return false;
 
 	return true;

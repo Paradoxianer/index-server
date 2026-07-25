@@ -5,6 +5,7 @@ UsePrivateHeaders index_server shared ;
 local sources =
 	CLuceneDataBase.cpp
 	FullTextAnalyser.cpp
+	TranslatorTimeout.cpp
 
 	IndexServerAddOn.cpp
 	;

@@ -13,6 +13,8 @@
 #include <File.h>
 #include <TranslatorRoster.h>
 
+#include "TranslatorTimeout.h"
+
 
 #define DEBUG_CLUCENE_DATABASE
 #ifdef DEBUG_CLUCENE_DATABASE
@@ -28,6 +30,31 @@ using namespace lucene::util;
 
 
 const uint8 kCluceneTries = 10;
+
+// A hung or pathological translator must not stall the whole VolumeWorker
+// thread (it processes every entry of a volume serially).
+const bigtime_t kTranslateTimeout = 30 * 1000000;
+
+
+namespace {
+
+
+struct translate_cookie {
+	BPositionIO*	source;
+	BPositionIO*	destination;
+};
+
+
+status_t
+do_translate(void* data)
+{
+	translate_cookie* cookie = (translate_cookie*)data;
+	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
+		cookie->destination, 'TEXT');
+}
+
+
+}	// namespace
 
 
 wchar_t* to_wchar(const char *str)
@@ -256,9 +283,8 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 		return false;
 	}
 
-	BTranslatorRoster* translatorRoster = BTranslatorRoster::Default();
-	if (translatorRoster->Translate(&inFile, NULL, NULL, &outFile, 'TEXT')
-		!= B_OK)
+	translate_cookie cookie = { &inFile, &outFile };
+	if (run_with_timeout(do_translate, &cookie, kTranslateTimeout) != B_OK)
 		return false;
 
 	inFile.Unset(); 
