@@ -9,15 +9,15 @@ local sources =
 	IndexServerAddOn.cpp
 	;
 
-SubDirSysHdrs $(HAIKU_CLUCENE_HEADERS) ;
-Includes [ FGristFiles $(sources) ] : $(HAIKU_CLUCENE_HEADERS_DEPENDENCY) ;
+UseBuildFeatureHeaders clucene ;
+Includes [ FGristFiles $(sources) ] : [ BuildFeatureAttribute clucene : headers ] ;
 		# Dependency needed to trigger downloading/unzipping the package before
 		# compiling the files.
 
 Addon FullTextAnalyser :
 	$(sources)
 	:
-	be $(HAIKU_CLUCENE_LIBS) [ TargetLibstdc++ ]
+	be translation [ BuildFeatureAttribute clucene : libraries ] [ TargetLibstdc++ ]
 ;
 
 SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
