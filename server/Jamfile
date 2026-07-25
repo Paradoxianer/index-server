@@ -10,6 +10,7 @@ Application index_server :
 	main.cpp
 	IndexServer.cpp
 	IndexServerAddOn.cpp
+	IndexServerSettings.cpp
 	VolumeWatcher.cpp
 
 	# storage

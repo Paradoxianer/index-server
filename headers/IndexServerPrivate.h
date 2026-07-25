@@ -14,6 +14,22 @@
 
 const BString kIndexServerDirectory = "index_server";
 const BString kVolumeStatusFileName = "VolumeStatus";
+const BString kSettingsFileName = "settings";
+
+
+/*! True if \a path is equal to \a prefix or lies below it. Both paths are
+expected to be normalized (no trailing slash, no "..").  */
+inline bool
+path_is_or_is_under(const BString& path, const BString& prefix)
+{
+	if (path == prefix)
+		return true;
+	if (path.Length() <= prefix.Length())
+		return false;
+	if (path.Compare(prefix, prefix.Length()) != 0)
+		return false;
+	return path[prefix.Length()] == '/';
+}
 
 // messages between preferences app
 const uint32 kStopWatching = 'StoW';
