@@ -10,6 +10,7 @@
 
 
 #include "AnalyserDispatcher.h"
+#include "IndexServerSettings.h"
 
 
 #define DEBUG_CATCH_UP
@@ -25,7 +26,8 @@ class CatchUpAnalyser : public AnalyserDispatcher {
 public:
 								CatchUpAnalyser(const BVolume& volume,
 									time_t start, time_t end,
-									BHandler* manager);
+									BHandler* manager,
+									IndexServerSettings* settings);
 
 			void				MessageReceived(BMessage *message);
 			void				StartAnalysing();
@@ -43,6 +45,7 @@ private:
 			time_t				fEnd;
 
 			BHandler*			fCatchUpManager;
+			IndexServerSettings*	fSettings;
 };
 
 
@@ -51,7 +54,8 @@ typedef BObjectList<CatchUpAnalyser> CatchUpAnalyserList;
 
 class CatchUpManager : public BHandler {
 public:
-								CatchUpManager(const BVolume& volume);
+								CatchUpManager(const BVolume& volume,
+									IndexServerSettings* settings);
 								~CatchUpManager();
 
 			void				MessageReceived(BMessage *message);
@@ -69,6 +73,7 @@ public:
 
 private:
 			BVolume				fVolume;
+			IndexServerSettings*	fSettings;
 
 			FileAnalyserList	fFileAnalyserQueue;
 			CatchUpAnalyserList	fCatchUpAnalyserList;

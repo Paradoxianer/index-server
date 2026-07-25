@@ -38,6 +38,8 @@ WatchNameHandler::EntryCreated(const char *name, ino_t directory, dev_t device,
 	ino_t node)
 {
 	entry_ref ref(device, directory, name);
+	if (fVolumeWatcher->_IsExcluded(ref))
+		return;
 	fVolumeWatcher->fCreatedList.CurrentList()->push_back(ref);
 	fVolumeWatcher->_NewEntriesArrived();
 }
@@ -48,6 +50,8 @@ WatchNameHandler::EntryRemoved(const char *name, ino_t directory, dev_t device,
 	ino_t node)
 {
 	entry_ref ref(device, directory, name);
+	if (fVolumeWatcher->_IsExcluded(ref))
+		return;
 	fVolumeWatcher->fDeleteList.CurrentList()->push_back(ref);
 	fVolumeWatcher->_NewEntriesArrived();
 }
@@ -60,6 +64,11 @@ WatchNameHandler::EntryMoved(const char *name, const char *fromName,
 {
 	entry_ref ref(device, to_directory, name);
 	entry_ref refFrom(device, from_directory, fromName);
+
+	// movedList and movedFromList are paired up by index (see
+	// VolumeWorker::_Work), so both sides have to be dropped together.
+	if (fVolumeWatcher->_IsExcluded(ref) || fVolumeWatcher->_IsExcluded(refFrom))
+		return;
 
 	fVolumeWatcher->fMovedList.CurrentList()->push_back(ref);
 	fVolumeWatcher->fMovedFromList.CurrentList()->push_back(refFrom);
@@ -100,6 +109,9 @@ WatchNameHandler::MessageReceived(BMessage* msg)
 				BPath path(&ref);
 				printf("stat changed node %i name %s %s\n", (int)node,
 					name.String(), path.Path());
+
+				if (fVolumeWatcher->_IsExcluded(ref))
+					break;
 
 				fVolumeWatcher->fModifiedList.CurrentList()->push_back(ref);
 				fVolumeWatcher->_NewEntriesArrived();
@@ -424,14 +436,16 @@ SwapEntryRefVector::CurrentList()
 }
 
 
-VolumeWatcher::VolumeWatcher(const BVolume& volume)
+VolumeWatcher::VolumeWatcher(const BVolume& volume,
+	IndexServerSettings* settings)
 	:
 	VolumeWatcherBase(volume),
 	BLooper("VolumeWatcher"),
 
 	fWatching(false),
+	fSettings(settings),
 	fWatchNameHandler(this),
-	fCatchUpManager(volume)
+	fCatchUpManager(volume, settings)
 {
 	AddHandler(&fWatchNameHandler);
 
@@ -548,4 +562,18 @@ VolumeWatcher::_NewEntriesArrived()
 	if (fVolumeWorker->IsBusy())
 		return;
 	fVolumeWorker->PostMessage(kTriggerWork);
+}
+
+
+bool
+VolumeWatcher::_IsExcluded(const entry_ref& ref) const
+{
+	if (fSettings == NULL)
+		return false;
+
+	BPath path(&ref);
+	if (path.InitCheck() != B_OK)
+		return false;
+
+	return fSettings->IsPathExcluded(BString(path.Path()), fVolume);
 }

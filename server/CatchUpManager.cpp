@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <Debug.h>
+#include <Path.h>
 #include <Query.h>
 
 #include "IndexServer.h"
@@ -23,15 +24,16 @@ const bigtime_t kSecond = 1000000;
 
 
 CatchUpAnalyser::CatchUpAnalyser(const BVolume& volume, time_t start,
-	time_t end, BHandler* manager)
+	time_t end, BHandler* manager, IndexServerSettings* settings)
 	:
 	AnalyserDispatcher("CatchUpAnalyser"),
 	fVolume(volume),
 	fStart(start),
 	fEnd(end),
-	fCatchUpManager(manager)
+	fCatchUpManager(manager),
+	fSettings(settings)
 {
-	
+
 }
 
 
@@ -96,9 +98,14 @@ CatchUpAnalyser::_CatchUp()
 	
 	std::vector<entry_ref> entryList;
 	entry_ref ref;
-	//TODO check if the ref is in a "disabled" path
 	while (query.GetNextRef(&ref) == B_OK) {
-		
+		if (fSettings != NULL) {
+			BPath path(&ref);
+			if (path.InitCheck() == B_OK
+				&& fSettings->IsPathExcluded(BString(path.Path()), fVolume)) {
+				continue;
+			}
+		}
 		entryList.push_back(ref);
 	}
 
@@ -139,9 +146,11 @@ CatchUpAnalyser::_WriteSyncSatus(bigtime_t syncTime)
 }
 
 
-CatchUpManager::CatchUpManager(const BVolume& volume)
+CatchUpManager::CatchUpManager(const BVolume& volume,
+	IndexServerSettings* settings)
 	:
-	fVolume(volume)
+	fVolume(volume),
+	fSettings(settings)
 {
 
 }
@@ -226,7 +235,7 @@ CatchUpManager::CatchUp()
 	}
 
 	CatchUpAnalyser* catchUpAnalyser = new CatchUpAnalyser(fVolume,
-		startBig / kSecond, endBig / kSecond, this);
+		startBig / kSecond, endBig / kSecond, this, fSettings);
 	if (!catchUpAnalyser)
 		return false;
 	if (!fCatchUpAnalyserList.AddItem(catchUpAnalyser)) {

@@ -17,6 +17,7 @@
 #include <ObjectList.h>
 
 #include "IndexServerAddOn.h"
+#include "IndexServerSettings.h"
 #include "VolumeWatcher.h"
 
 
@@ -89,6 +90,8 @@ private:
 			BVolumeRoster		fVolumeRoster;
 			BObjectList<VolumeWatcher>		fVolumeWatcherList;
 			BObjectList<IndexServerAddOn>	fAddOnList;
+
+			IndexServerSettings	fSettings;
 
 			VolumeObserverHandler	fVolumeObserverHandler;
 

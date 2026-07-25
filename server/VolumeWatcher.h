@@ -21,6 +21,7 @@
 #include "AnalyserDispatcher.h"
 #include "CatchUpManager.h"
 #include "IndexServerAddOn.h"
+#include "IndexServerSettings.h"
 
 
 class VolumeWatcher;
@@ -125,7 +126,8 @@ struct list_collection
 /*! Watch a volume and delegate changed entries to a VolumeWorker. */
 class VolumeWatcher : public VolumeWatcherBase, public BLooper {
 public:
-								VolumeWatcher(const BVolume& volume);
+								VolumeWatcher(const BVolume& volume,
+									IndexServerSettings* settings);
 								~VolumeWatcher();
 
 			bool				StartWatching();
@@ -145,7 +147,12 @@ private:
 
 			void				_NewEntriesArrived();
 
+			//! true if ref should not be handed to the AnalyserDispatcher
+			bool				_IsExcluded(const entry_ref& ref) const;
+
 			bool				fWatching;
+
+			IndexServerSettings*	fSettings;
 
 			WatchNameHandler	fWatchNameHandler;
 

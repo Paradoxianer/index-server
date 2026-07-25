@@ -80,6 +80,7 @@ IndexServer::IndexServer()
 	fAddOnMonitorHandler(this),
 	fPulseRunner(NULL)
 {
+	AddHandler(&fSettings);
 	AddHandler(&fVolumeObserverHandler);
 	AddHandler(&fAddOnMonitorHandler);
 }
@@ -100,14 +101,18 @@ IndexServer::~IndexServer()
 
 	delete fPulseRunner;
 
+	fSettings.StopWatchingSettings();
+
 	RemoveHandler(&fVolumeObserverHandler);
 	RemoveHandler(&fAddOnMonitorHandler);
+	RemoveHandler(&fSettings);
 }
 
 
 void
 IndexServer::ReadyToRun()
 {
+	fSettings.StartWatchingSettings();
 	_StartWatchingAddOns();
 	_StartWatchingVolumes();
 }
@@ -146,7 +151,7 @@ IndexServer::AddVolume(const BVolume& volume)
 	volume.GetName(name);
 	STRACE("IndexServer::AddVolume %s\n", name);
 
-	VolumeWatcher* watcher = new VolumeWatcher(volume);
+	VolumeWatcher* watcher = new VolumeWatcher(volume, &fSettings);
 /*	if (!watcher->Enabled()) {
 		delete watcher;
 		return;
