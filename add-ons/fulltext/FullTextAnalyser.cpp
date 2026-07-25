@@ -36,9 +36,12 @@ const bigtime_t kIdentifyTimeout = 5 * 1000000;
 namespace {
 
 
+// Owns the file itself rather than pointing at the caller's stack local: on
+// timeout, ownership passes to the still-running helper thread (see
+// TranslatorTimeout.h), which may still be reading it.
 struct identify_cookie {
-	BPositionIO*		source;
-	translator_info*	info;
+	BFile*				source;
+	translator_info		info;
 };
 
 
@@ -47,7 +50,16 @@ do_identify(void* data)
 {
 	identify_cookie* cookie = (identify_cookie*)data;
 	return BTranslatorRoster::Default()->Identify(cookie->source, NULL,
-		cookie->info, 0, NULL, B_TRANSLATOR_TEXT);
+		&cookie->info, 0, NULL, B_TRANSLATOR_TEXT);
+}
+
+
+void
+cleanup_identify(void* data)
+{
+	identify_cookie* cookie = (identify_cookie*)data;
+	delete cookie->source;
+	delete cookie;
 }
 
 
@@ -140,18 +152,32 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	if (_IsInIndexDirectory(ref))
 		return false;
 
-	BFile file(&ref, B_READ_ONLY);
-	off_t size;
-	if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
-		|| size > kMaxIndexableFileSize)
-		return false;
+	{
+		BFile file(&ref, B_READ_ONLY);
+		off_t size;
+		if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
+			|| size > kMaxIndexableFileSize)
+			return false;
+	}
 
-	translator_info translatorInfo;
-	identify_cookie cookie = { &file, &translatorInfo };
-	if (run_with_timeout(do_identify, &cookie, kIdentifyTimeout) != B_OK)
+	identify_cookie* cookie = new(std::nothrow) identify_cookie;
+	if (cookie == NULL)
 		return false;
+	cookie->source = new(std::nothrow) BFile(&ref, B_READ_ONLY);
+	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
+		cleanup_identify(cookie);
+		return false;
+	}
 
-	return true;
+	status_t status = run_with_timeout(do_identify, cookie, cleanup_identify,
+		kIdentifyTimeout);
+	if (status == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; don't
+		// touch it here.
+		return false;
+	}
+	cleanup_identify(cookie);
+	return status == B_OK;
 }
 
 

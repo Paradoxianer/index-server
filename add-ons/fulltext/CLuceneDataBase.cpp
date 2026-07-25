@@ -9,6 +9,8 @@
 
 #include "CLuceneDataBase.h"
 
+#include <new>
+
 #include <Directory.h>
 #include <File.h>
 #include <TranslatorRoster.h>
@@ -39,9 +41,12 @@ const bigtime_t kTranslateTimeout = 30 * 1000000;
 namespace {
 
 
+// Owns the files itself rather than pointing at the caller's stack locals:
+// on timeout, ownership passes to the still-running helper thread (see
+// TranslatorTimeout.h), which may still be reading/writing them.
 struct translate_cookie {
-	BPositionIO*	source;
-	BPositionIO*	destination;
+	BFile*	source;
+	BFile*	destination;
 };
 
 
@@ -51,6 +56,16 @@ do_translate(void* data)
 	translate_cookie* cookie = (translate_cookie*)data;
 	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
 		cookie->destination, 'TEXT');
+}
+
+
+void
+cleanup_translate(void* data)
+{
+	translate_cookie* cookie = (translate_cookie*)data;
+	delete cookie->source;
+	delete cookie->destination;
+	delete cookie;
 }
 
 
@@ -270,25 +285,30 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 {
 	BPath path(&ref);
 
-	BFile inFile, outFile;
-	inFile.SetTo(path.Path(), B_READ_ONLY);
-	if (inFile.InitCheck() != B_OK) {
-		STRACE("Can't open inFile %s\n", path.Path());
+	translate_cookie* cookie = new(std::nothrow) translate_cookie;
+	if (cookie == NULL)
 		return false;
-	}
-	outFile.SetTo(fTempPath.Path(),
+	cookie->source = new(std::nothrow) BFile(path.Path(), B_READ_ONLY);
+	cookie->destination = new(std::nothrow) BFile(fTempPath.Path(),
 		B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
-	if (outFile.InitCheck() != B_OK) {
-		STRACE("Can't open outFile %s\n", fTempPath.Path());
+	if (cookie->source == NULL || cookie->destination == NULL
+		|| cookie->source->InitCheck() != B_OK
+		|| cookie->destination->InitCheck() != B_OK) {
+		STRACE("Can't open inFile/outFile for %s\n", path.Path());
+		cleanup_translate(cookie);
 		return false;
 	}
 
-	translate_cookie cookie = { &inFile, &outFile };
-	if (run_with_timeout(do_translate, &cookie, kTranslateTimeout) != B_OK)
+	status_t translateStatus = run_with_timeout(do_translate, cookie,
+		cleanup_translate, kTranslateTimeout);
+	if (translateStatus == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; must not
+		// touch it (or fTempPath, which it may still be writing to) here.
 		return false;
-
-	inFile.Unset(); 
-	outFile.Unset();
+	}
+	cleanup_translate(cookie);
+	if (translateStatus != B_OK)
+		return false;
 
 	FileReader* fileReader = new FileReader(fTempPath.Path(), "UTF-8");
 	wchar_t* wPath = to_wchar(path.Path());
