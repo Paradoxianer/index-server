@@ -1,8 +1,12 @@
 #include "AudioTagAnalyser.h"
 
 #include <new>
+#include <string.h>
 
 #include <MediaFile.h>
+#include <Mime.h>
+#include <Node.h>
+#include <NodeInfo.h>
 #include <Path.h>
 
 #include <audioproperties.h>
@@ -26,9 +30,31 @@ AudioTagAnalyser::InitCheck()
 
 
 
+bool
+AudioTagAnalyser::_IsAudioFile(const entry_ref& ref)
+{
+	BNode node(&ref);
+	if (node.InitCheck() != B_OK)
+		return false;
+
+	BNodeInfo nodeInfo(&node);
+	char mimeType[B_MIME_TYPE_LENGTH];
+	if (nodeInfo.GetType(mimeType) != B_OK)
+		return false;
+
+	return strncmp(mimeType, "audio/", 6) == 0;
+}
+
+
 void
 AudioTagAnalyser::AnalyseEntry(const entry_ref& ref)
 {
+	// TagLib crashes on some non-audio input, having no reason to expect
+	// anything else; only hand it files the system already recognizes as
+	// audio.
+	if (!_IsAudioFile(ref))
+		return;
+
 	BPath path(&ref);
 
 	TagLib::FileRef tagFile(path.Path());

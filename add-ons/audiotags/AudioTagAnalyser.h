@@ -13,6 +13,9 @@ public:
 			status_t			InitCheck();
 
 			void				AnalyseEntry(const entry_ref& ref);
+
+private:
+			bool				_IsAudioFile(const entry_ref& ref);
 };
 
 
