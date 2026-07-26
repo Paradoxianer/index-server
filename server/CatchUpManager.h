@@ -9,6 +9,8 @@
 #define CATCH_UP_MANAGER_H
 
 
+#include <vector>
+
 #include "AnalyserDispatcher.h"
 #include "IndexServerSettings.h"
 
@@ -64,23 +66,31 @@ public:
 
 			void				MessageReceived(BMessage *message);
 
-			//! Add analyser to the queue.
+			//! Register an analyser as wanting to take part in catch up.
+			//! Keeps a reference to its settings, not the analyser itself -
+			//! CatchUp() may run more than once over this object's lifetime
+			//! (e.g. FileAnalyser::RequestRescan()) and builds a fresh
+			//! catch-up clone from the add-on each time.
 			bool				AddAnalyser(const FileAnalyser* analyser);
 			void				RemoveAnalyser(const BString& name);
 
-			//! Spawn a CatchUpAnalyser and fill it with the analyser in the
-			//! queue
+			//! Spawn a CatchUpAnalyser covering every registered analyser.
+			//! If one is already running for this volume, this instead
+			//! marks a catch up as pending: it starts automatically as
+			//! soon as the current run finishes, so a registration or
+			//! rescan request that arrives mid-run is never silently
+			//! dropped.
 			bool				CatchUp();
-			//! Stop all catch up threads and put the analyser back into the
-			//! queue.
+			//! Stop all catch up threads.
 			void				Stop();
 
 private:
 			BVolume				fVolume;
 			IndexServerSettings*	fSettings;
 
-			FileAnalyserList	fFileAnalyserQueue;
+			std::vector<BReference<AnalyserSettings> >	fRegisteredAnalysers;
 			CatchUpAnalyserList	fCatchUpAnalyserList;
+			bool				fCatchUpPending;
 };
 
 #endif

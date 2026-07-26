@@ -452,6 +452,15 @@ VolumeWatcher::VolumeWatcher(const BVolume& volume,
 	fCatchUpManager(volume, settings)
 {
 	AddHandler(&fWatchNameHandler);
+	// CatchUpAnalyser messages fCatchUpManager (a plain BHandler, not a
+	// BLooper) via a BMessenger built from just the handler pointer; that
+	// only resolves if the handler already belongs to a looper. Without
+	// this, kCatchUpDone silently never arrives (BMessenger ends up
+	// invalid) and every finished CatchUpAnalyser leaks instead of being
+	// cleaned up - true since the original 2010 code, just never
+	// noticeable until CatchUpManager::CatchUp() started relying on
+	// kCatchUpDone to know when it's safe to start the next run.
+	AddHandler(&fCatchUpManager);
 
 	fVolumeWorker = new VolumeWorker(this);
 	fVolumeWorker->Run();

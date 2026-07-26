@@ -133,8 +133,13 @@ CatchUpAnalyser::_CatchUp()
 
 	PRINT(("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size()));
 
-	if (entryList.size() == 0)
-		return;
+	// Deliberately not an early return on an empty entryList: this still
+	// needs to fall through to advance the sync position and send
+	// kCatchUpDone below. A CatchUpAnalyser that returns without ever
+	// sending kCatchUpDone stays in CatchUpManager's list forever, which
+	// (now that only one catch up runs at a time per volume, see
+	// CatchUpManager::CatchUp()) would permanently block every later catch
+	// up for this volume, including any pending one.
 
 	// A routine catch up after a short restart is over in a blink; only a
 	// backlog large enough to actually take a while is worth telling the
@@ -187,11 +192,12 @@ CatchUpAnalyser::_CreateProgressNotifier()
 	if (fVolume.GetName(volumeName) != B_OK)
 		strlcpy(volumeName, "?", sizeof(volumeName));
 
-	// Analysers are named after their add-on (e.g. "FullTextAnalyser"); a
-	// volume can be catching up more than one at once (see
-	// CatchUpManager::CatchUp(), called once per registering add-on), each
-	// as its own CatchUpAnalyser, so the identifier needs to cover both the
-	// volume and the analyser set to not collide with a sibling catch up.
+	// Analysers are named after their add-on (e.g. "FullTextAnalyser").
+	// CatchUpManager only ever runs one CatchUpAnalyser at a time per
+	// volume now, but consecutive runs can cover different analyser sets
+	// (one registered after the previous run's snapshot was taken), so the
+	// identifier still needs to cover both the volume and the analyser set
+	// to not collide with an earlier run's still-fading notification.
 	BString analyserNames;
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
 		if (i > 0)
@@ -228,7 +234,8 @@ CatchUpManager::CatchUpManager(const BVolume& volume,
 	IndexServerSettings* settings)
 	:
 	fVolume(volume),
-	fSettings(settings)
+	fSettings(settings),
+	fCatchUpPending(false)
 {
 
 }
@@ -237,9 +244,6 @@ CatchUpManager::CatchUpManager(const BVolume& volume,
 CatchUpManager::~CatchUpManager()
 {
 	Stop();
-
-	for (int i = 0; i < fFileAnalyserQueue.CountItems(); i++)
-		delete fFileAnalyserQueue.ItemAt(i);
 }
 
 
@@ -252,6 +256,15 @@ CatchUpManager::MessageReceived(BMessage *message)
 			message->GetPointer("Analyser", &analyser);
 			fCatchUpAnalyserList.RemoveItem(analyser);
 			analyser->PostMessage(B_QUIT_REQUESTED);
+
+			if (fCatchUpPending) {
+				// Something registered or asked for a rescan while this run
+				// was still going; it was folded into fRegisteredAnalysers
+				// already but missed this run's snapshot, so give it its
+				// own run now instead of leaving it stranded.
+				fCatchUpPending = false;
+				CatchUp();
+			}
 		break;
 
 		default:
@@ -263,29 +276,20 @@ CatchUpManager::MessageReceived(BMessage *message)
 bool
 CatchUpManager::AddAnalyser(const FileAnalyser* analyserOrg)
 {
-	IndexServer* server = (IndexServer*)be_app;
-	FileAnalyser* analyser = server->CreateFileAnalyser(analyserOrg->Name(),
-		fVolume);
-	if (!analyser)
-		return false;
 	ASSERT(analyserOrg->Settings());
-	analyser->SetSettings(analyserOrg->Settings());
-
-	bool status = fFileAnalyserQueue.AddItem(analyser);
-	if (!status)
-		delete analyser;
-	return status;
+	fRegisteredAnalysers.push_back(
+		BReference<AnalyserSettings>(analyserOrg->Settings()));
+	return true;
 }
 
 
 void
 CatchUpManager::RemoveAnalyser(const BString& name)
 {
-	for (int i = 0; i < fFileAnalyserQueue.CountItems(); i++) {
-		FileAnalyser* analyser = fFileAnalyserQueue.ItemAt(i);
-		if (analyser->Name() == name) {
-			fFileAnalyserQueue.RemoveItem(analyser);
-			delete analyser;
+	for (size_t i = 0; i < fRegisteredAnalysers.size(); i++) {
+		if (fRegisteredAnalysers[i]->Name() == name) {
+			fRegisteredAnalysers.erase(fRegisteredAnalysers.begin() + i);
+			break;
 		}
 	}
 
@@ -298,13 +302,22 @@ bool
 CatchUpManager::CatchUp()
 {
 	STRACE("CatchUpManager::CatchUp()\n");
+	if (fCatchUpAnalyserList.CountItems() > 0) {
+		// Already catching up this volume - let it finish rather than
+		// piling another run on top (e.g. a rescan request, see #2,
+		// arriving mid catch-up); MessageReceived() starts a follow-up run
+		// automatically once it does.
+		fCatchUpPending = true;
+		return false;
+	}
+	if (fRegisteredAnalysers.empty())
+		return false;
+
 	bigtime_t startBig  = 0;
 	bigtime_t endBig = real_time_clock_usecs();
-	for (int i = 0; i < fFileAnalyserQueue.CountItems(); i++) {
-		FileAnalyser* analyser = fFileAnalyserQueue.ItemAt(i);
- 		analyser->UpdateSettingsCache();
-		const analyser_settings& settings = analyser->CachedSettings();
-		STRACE("%s, %i, %i\n", analyser->Name().String(),
+	for (size_t i = 0; i < fRegisteredAnalysers.size(); i++) {
+		analyser_settings settings = fRegisteredAnalysers[i]->RawSettings();
+		STRACE("%s, %i, %i\n", fRegisteredAnalysers[i]->Name().String(),
 			  (int)settings.syncPosition, (int)settings.watchingStart);
 		if (startBig < settings.syncPosition )
 			startBig = settings.syncPosition;
@@ -321,14 +334,19 @@ CatchUpManager::CatchUp()
 		return false;
 	}
 
-	for (int i = 0; i < fFileAnalyserQueue.CountItems(); i++) {
-		FileAnalyser* analyser = fFileAnalyserQueue.ItemAt(i);
-		// if AddAnalyser fails at least don't leak
+	// Each catch up run gets its own fresh FileAnalyser clone from the
+	// add-on - the registered AnalyserSettings reference is what survives
+	// across runs, not the analyser object itself.
+	IndexServer* server = (IndexServer*)be_app;
+	for (size_t i = 0; i < fRegisteredAnalysers.size(); i++) {
+		FileAnalyser* analyser = server->CreateFileAnalyser(
+			fRegisteredAnalysers[i]->Name(), fVolume);
+		if (analyser == NULL)
+			continue;
+		analyser->SetSettings(fRegisteredAnalysers[i].Get());
 		if (!catchUpAnalyser->AddAnalyser(analyser))
 			delete analyser;
-			
 	}
-	fFileAnalyserQueue.MakeEmpty();
 
 	catchUpAnalyser->StartAnalysing();
 	return true;
