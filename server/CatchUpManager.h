@@ -22,6 +22,9 @@
 #endif
 
 
+class IndexProgressNotifier;
+
+
 class CatchUpAnalyser : public AnalyserDispatcher {
 public:
 								CatchUpAnalyser(const BVolume& volume,
@@ -39,6 +42,7 @@ public:
 private:
 			void				_CatchUp();
 			void				_WriteSyncSatus(bigtime_t syncTime);
+			IndexProgressNotifier*	_CreateProgressNotifier();
 
 			BVolume				fVolume;
 			time_t				fStart;

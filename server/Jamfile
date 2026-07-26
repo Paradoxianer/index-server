@@ -7,6 +7,7 @@ UsePrivateSystemHeaders ;
 
 Application index_server :
 	CatchUpManager.cpp
+	IndexProgressNotifier.cpp
 	main.cpp
 	IndexServer.cpp
 	IndexServerAddOn.cpp
@@ -17,7 +18,7 @@ Application index_server :
 	AddOnMonitorHandler.cpp
 	NodeMonitorHandler.cpp
 	:
-	be
+	be localestub
 	[ TargetLibstdc++ ]
 ;
 

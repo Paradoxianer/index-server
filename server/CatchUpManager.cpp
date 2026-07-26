@@ -11,11 +11,17 @@
 #include <vector>
 
 #include <Autolock.h>
+#include <Catalog.h>
 #include <Debug.h>
 #include <Path.h>
 #include <Query.h>
 
+#include "IndexProgressNotifier.h"
 #include "IndexServer.h"
+
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "CatchUpManager"
 
 
 const uint32 kCatchUp = '&CaU';
@@ -116,21 +122,38 @@ CatchUpAnalyser::_CatchUp()
 	if (entryList.size() == 0)
 		return;
 
+	// A routine catch up after a short restart is over in a blink; only a
+	// backlog large enough to actually take a while is worth telling the
+	// user about (see issue #34).
+	const size_t kNotifyThreshold = 200;
+	IndexProgressNotifier* notifier = NULL;
+	if (entryList.size() >= kNotifyThreshold)
+		notifier = _CreateProgressNotifier();
+
 	for (uint32 i = 0; i < entryList.size(); i++) {
 		if (Stopped()) {
 			// Commit whatever was queued so far - otherwise interrupting a
 			// large catch up (e.g. server restart before it finishes) would
 			// silently discard all progress made up to this point.
 			LastEntry();
+			delete notifier;
 			return;
 		}
-		if (i % 100 == 0)
+		if (i % 100 == 0) {
 			printf("Catch up: %i/%i\n", (int)i,(int)entryList.size());
+			if (notifier != NULL)
+				notifier->Progress(i, entryList.size());
+		}
 		AnalyseEntry(entryList[i]);
 		if (i % 500 == 0 && i > 0)
 			LastEntry();
 	}
 	LastEntry();
+
+	if (notifier != NULL) {
+		notifier->Done(entryList.size());
+		delete notifier;
+	}
 
 	_WriteSyncSatus(fEnd * kSecond);
 	printf(("Catched up.\n"));
@@ -139,6 +162,37 @@ CatchUpAnalyser::_CatchUp()
 	BMessage msg(kCatchUpDone);
 	msg.AddPointer("Analyser", this);
 	managerMessenger.SendMessage(&msg);
+}
+
+
+IndexProgressNotifier*
+CatchUpAnalyser::_CreateProgressNotifier()
+{
+	char volumeName[B_FILE_NAME_LENGTH];
+	if (fVolume.GetName(volumeName) != B_OK)
+		strlcpy(volumeName, "?", sizeof(volumeName));
+
+	// Analysers are named after their add-on (e.g. "FullTextAnalyser"); a
+	// volume can be catching up more than one at once (see
+	// CatchUpManager::CatchUp(), called once per registering add-on), each
+	// as its own CatchUpAnalyser, so the identifier needs to cover both the
+	// volume and the analyser set to not collide with a sibling catch up.
+	BString analyserNames;
+	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
+		if (i > 0)
+			analyserNames << ", ";
+		analyserNames << fFileAnalyserList.ItemAt(i)->Name();
+	}
+
+	BString messageID;
+	messageID << "catchup-" << (int32)fVolume.Device() << "-"
+		<< analyserNames;
+
+	BString title;
+	title.SetToFormat(B_TRANSLATE("Indexing %s (%s)"), volumeName,
+		analyserNames.String());
+
+	return new IndexProgressNotifier(messageID, title);
 }
 
 
