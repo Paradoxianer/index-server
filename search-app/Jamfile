@@ -1,0 +1,31 @@
+SubDir HAIKU_TOP src apps index_server_search ;
+
+UsePrivateHeaders index_server interface ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src add-ons index_server fulltext ] ;
+
+UseBuildFeatureHeaders clucene ;
+
+# CLucene's own headers trip -Werror=deprecated-declarations (std::
+# binary_function) on newer GCC; not something we can fix in a header we
+# don't own. fulltext's Jamfile doesn't hit this only because Addon
+# targets don't get -Werror by default the way Application targets do.
+SubDirC++Flags -Wno-error=deprecated-declarations ;
+
+Application IndexServerSearch :
+	IndexSearchApp.cpp
+	SearchWindow.cpp
+	CLuceneSearcher.cpp
+	:
+	be localestub libcolumnlistview.a
+	[ BuildFeatureAttribute clucene : libraries ] [ TargetLibstdc++ ]
+	:
+	IndexServerSearch.rdef
+	;
+
+Depends IndexServerSearch : libcolumnlistview.a ;
+
+DoCatalogs IndexServerSearch :
+	x-vnd.Haiku-IndexServerSearch
+	:
+	SearchWindow.cpp
+	;
