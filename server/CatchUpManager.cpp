@@ -13,6 +13,8 @@
 #include <Autolock.h>
 #include <Catalog.h>
 #include <Debug.h>
+#include <MessageRunner.h>
+#include <Messenger.h>
 #include <Path.h>
 #include <Query.h>
 
@@ -28,6 +30,16 @@ const uint32 kCatchUp = '&CaU';
 const uint32 kCatchUpDone = '&CUD';
 
 const bigtime_t kSecond = 1000000;
+
+// Boot/login is when the disk and CPU are busiest with everything else
+// starting up too; giving the first catch up some time to get out of the
+// way avoids piling straight onto that (see #33).
+const bigtime_t kCatchUpStartDelay = 20 * kSecond;
+
+// A short breather between files during a large catch up, so a bulk scan
+// doesn't monopolize the disk against whatever the user is doing at the
+// same time. A first-pass heuristic, not a measured optimum - see #33.
+const bigtime_t kCatchUpPaceInterval = 500;
 
 
 CatchUpAnalyser::CatchUpAnalyser(const BVolume& volume, time_t start,
@@ -61,8 +73,10 @@ CatchUpAnalyser::MessageReceived(BMessage *message)
 void
 CatchUpAnalyser::StartAnalysing()
 {
-	PostMessage(kCatchUp);
 	Run();
+	BMessage message(kCatchUp);
+	BMessageRunner::StartSending(BMessenger(this), &message,
+		kCatchUpStartDelay, 1);
 }
 
 
@@ -145,6 +159,7 @@ CatchUpAnalyser::_CatchUp()
 				notifier->Progress(i, entryList.size());
 		}
 		AnalyseEntry(entryList[i]);
+		snooze(kCatchUpPaceInterval);
 		if (i % 500 == 0 && i > 0)
 			LastEntry();
 	}
