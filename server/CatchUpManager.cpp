@@ -115,11 +115,18 @@ CatchUpAnalyser::_CatchUp()
 		return;
 
 	for (uint32 i = 0; i < entryList.size(); i++) {
-		if (Stopped())
+		if (Stopped()) {
+			// Commit whatever was queued so far - otherwise interrupting a
+			// large catch up (e.g. server restart before it finishes) would
+			// silently discard all progress made up to this point.
+			LastEntry();
 			return;
+		}
 		if (i % 100 == 0)
 			printf("Catch up: %i/%i\n", (int)i,(int)entryList.size());
 		AnalyseEntry(entryList[i]);
+		if (i % 500 == 0 && i > 0)
+			LastEntry();
 	}
 	LastEntry();
 
