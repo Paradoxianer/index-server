@@ -1,0 +1,26 @@
+SubDir HAIKU_TOP src preferences index_server ;
+
+UsePrivateHeaders index_server shared interface ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src servers index ] ;
+
+Application IndexServerSettings :
+	IndexServerPreflet.cpp
+	SettingsWindow.cpp
+
+	IndexServerSettings.cpp
+	:
+	be tracker localestub libcolumnlistview.a [ TargetLibstdc++ ]
+	:
+	IndexServerSettings.rdef
+	;
+
+Depends IndexServerSettings : libcolumnlistview.a ;
+
+SEARCH on [ FGristFiles IndexServerSettings.cpp ]
+	+= [ FDirName $(HAIKU_TOP) src servers index ] ;
+
+DoCatalogs IndexServerSettings :
+	x-vnd.Haiku-IndexServerSettings
+	:
+	SettingsWindow.cpp
+	;
