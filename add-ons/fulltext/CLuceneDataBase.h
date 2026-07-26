@@ -11,6 +11,7 @@
 
 #include <vector>
 
+#include <Locker.h>
 #include <Path.h>
 
 #include "TextDataBase.h"
@@ -58,6 +59,18 @@ private:
 			StandardAnalyzer	fStandardAnalyzer;
 
 			IndexWriter*		fIndexWriter;
+
+			// Live monitoring and catch-up each run their own
+			// FullTextAnalyser/CLuceneWriteDataBase instance for the same
+			// volume, on separate threads, both pointed at the same
+			// on-disk CLucene directory. CLucene 2.x's write.lock only
+			// guards against two writers; a reader from one instance
+			// racing a commit from the other can still tear down
+			// mid-replaced segment files, which throws out of a CLucene
+			// destructor and aborts the process (C++11 destructors are
+			// implicitly noexcept). One process-wide lock around all
+			// actual CLucene I/O closes that race.
+			static	BLocker		sCLuceneLock;
 };
 
 #endif

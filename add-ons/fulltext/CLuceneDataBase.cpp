@@ -11,6 +11,7 @@
 
 #include <new>
 
+#include <Autolock.h>
 #include <Directory.h>
 #include <File.h>
 #include <TranslatorRoster.h>
@@ -70,6 +71,9 @@ cleanup_translate(void* data)
 
 
 }	// namespace
+
+
+BLocker CLuceneWriteDataBase::sCLuceneLock("CLucene index lock");
 
 
 wchar_t* to_wchar(const char *str)
@@ -145,6 +149,12 @@ CLuceneWriteDataBase::Commit()
 	if (fAddQueue.size() == 0 && fDeleteQueue.size() == 0)
 		return B_OK;
 	STRACE("Commit\n");
+
+	// Serializes against every other CLuceneWriteDataBase instance in this
+	// process (see sCLuceneLock's declaration) - live monitoring and
+	// catch-up for the same volume each hold their own instance pointed at
+	// the same on-disk directory.
+	BAutolock lock(sCLuceneLock);
 
 	_RemoveDocuments(fAddQueue);
 	_RemoveDocuments(fDeleteQueue);
