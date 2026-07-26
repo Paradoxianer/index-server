@@ -297,6 +297,9 @@ IndexServer::_SetupVolumeWatcher(VolumeWatcher* watcher)
 FileAnalyser*
 IndexServer::_SetupFileAnalyser(IndexServerAddOn* addon, const BVolume& volume)
 {
+	if (!fSettings.IsAnalyserEnabled(addon->Name()))
+		return NULL;
+
 	FileAnalyser* analyser = addon->CreateFileAnalyser(volume);
 	if (!analyser)
 		return NULL;

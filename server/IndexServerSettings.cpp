@@ -29,6 +29,7 @@
 
 static const char* kModeField = "mode";
 static const char* kPathsField = "paths";
+static const char* kDisabledAnalysersField = "disabledAnalysers";
 
 
 IndexServerSettings::IndexServerSettings()
@@ -107,6 +108,13 @@ IndexServerSettings::_Load()
 	for (int32 i = 0; settings.FindString(kPathsField, i, &path_) == B_OK; i++)
 		fPaths.push_back(path_);
 
+	BString name;
+	fDisabledAnalysers.clear();
+	for (int32 i = 0;
+			settings.FindString(kDisabledAnalysersField, i, &name) == B_OK;
+			i++)
+		fDisabledAnalysers.push_back(name);
+
 	STRACE("loaded %ld exclude paths, mode %d\n", (long)fPaths.size(),
 		fMode);
 	return true;
@@ -128,6 +136,8 @@ IndexServerSettings::_Save()
 	settings.AddInt32(kModeField, fMode);
 	for (size_t i = 0; i < fPaths.size(); i++)
 		settings.AddString(kPathsField, fPaths[i]);
+	for (size_t i = 0; i < fDisabledAnalysers.size(); i++)
+		settings.AddString(kDisabledAnalysersField, fDisabledAnalysers[i]);
 
 	lock.Unlock();
 
@@ -215,4 +225,113 @@ IndexServerSettings::IsPathExcluded(const BString& path, const BVolume& volume) 
 		}
 	}
 	return fMode == kBlacklistMode ? listed : !listed;
+}
+
+
+bool
+IndexServerSettings::IsAnalyserEnabled(const BString& name) const
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fDisabledAnalysers.size(); i++) {
+		if (fDisabledAnalysers[i] == name)
+			return false;
+	}
+	return true;
+}
+
+
+settings_mode
+IndexServerSettings::Mode() const
+{
+	BAutolock lock(fLock);
+	return fMode;
+}
+
+
+void
+IndexServerSettings::SetMode(settings_mode mode)
+{
+	BAutolock lock(fLock);
+	fMode = mode;
+}
+
+
+PathList
+IndexServerSettings::Paths() const
+{
+	BAutolock lock(fLock);
+	return fPaths;
+}
+
+
+void
+IndexServerSettings::AddPath(const BString& path)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fPaths.size(); i++) {
+		if (fPaths[i] == path)
+			return;
+	}
+	fPaths.push_back(path);
+}
+
+
+void
+IndexServerSettings::RemovePath(const BString& path)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fPaths.size(); i++) {
+		if (fPaths[i] == path) {
+			fPaths.erase(fPaths.begin() + i);
+			return;
+		}
+	}
+}
+
+
+PathList
+IndexServerSettings::DisabledAnalysers() const
+{
+	BAutolock lock(fLock);
+	return fDisabledAnalysers;
+}
+
+
+void
+IndexServerSettings::SetAnalyserEnabled(const BString& name, bool enabled)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fDisabledAnalysers.size(); i++) {
+		if (fDisabledAnalysers[i] == name) {
+			if (!enabled)
+				return;
+			fDisabledAnalysers.erase(fDisabledAnalysers.begin() + i);
+			return;
+		}
+	}
+	if (!enabled)
+		fDisabledAnalysers.push_back(name);
+}
+
+
+void
+IndexServerSettings::Save()
+{
+	_Save();
+}
+
+
+void
+IndexServerSettings::ResetToDefaults()
+{
+	_SetDefaults();
+	_Save();
+}
+
+
+void
+IndexServerSettings::Reload()
+{
+	if (!_Load())
+		_SetDefaults();
 }

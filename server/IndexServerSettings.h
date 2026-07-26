@@ -45,6 +45,34 @@ public:
 			bool				IsPathExcluded(const BString& path,
 									const BVolume& volume) const;
 
+			//! thread safe; true unless explicitly disabled
+			bool				IsAnalyserEnabled(const BString& name) const;
+
+			// The accessors below are for the settings preflet, which runs
+			// as its own instance in its own team (never sharing an
+			// IndexServerSettings object with the server), so they don't
+			// need to be as carefully thread safe as the exclude-path/
+			// analyser-enabled checks above, which race against a live
+			// node-monitor reload.
+			settings_mode		Mode() const;
+			void				SetMode(settings_mode mode);
+
+			PathList			Paths() const;
+			void				AddPath(const BString& path);
+			void				RemovePath(const BString& path);
+
+			PathList			DisabledAnalysers() const;
+			void				SetAnalyserEnabled(const BString& name,
+									bool enabled);
+
+			void				Save();
+			void				ResetToDefaults();
+			//! Re-reads the settings file, discarding any in-memory state
+			//! that wasn't saved (there shouldn't be any, since every
+			//! accessor above saves immediately, but the file may have
+			//! changed from outside this instance).
+			void				Reload();
+
 private:
 			void				_SetDefaults();
 			bool				_Load();
@@ -54,6 +82,7 @@ private:
 	mutable	BLocker				fLock;
 			settings_mode		fMode;
 			PathList			fPaths;
+			PathList			fDisabledAnalysers;
 
 			node_ref			fSettingsNodeRef;
 			bool				fWatchingSettings;
