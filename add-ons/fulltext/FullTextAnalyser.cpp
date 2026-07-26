@@ -9,7 +9,6 @@
 
 #include <new>
 
-#include <Directory.h>
 #include <String.h>
 #include <TranslatorFormats.h>
 #include <TranslatorRoster.h>
@@ -73,10 +72,7 @@ FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)
 	fWriteDataBase(NULL),
 	fNUncommited(0)
 {
-	BDirectory dir;
-	volume.GetRootDirectory(&dir);
-	fDataBasePath.SetTo(&dir);
-	fDataBasePath.Append(kIndexServerDirectory);
+	fDataBasePath = volume_index_server_directory(volume);
 	status_t status = fDataBasePath.Append(kFullTextDirectory);
 
 	if (status == B_OK)

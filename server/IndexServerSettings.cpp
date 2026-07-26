@@ -8,7 +8,6 @@
 #include "IndexServerSettings.h"
 
 #include <Autolock.h>
-#include <Directory.h>
 #include <Entry.h>
 #include <File.h>
 #include <FindDirectory.h>
@@ -205,16 +204,12 @@ bool
 IndexServerSettings::IsPathExcluded(const BString& path, const BVolume& volume) const
 {
 	// The per-volume analyser data (e.g. the CLucene index) always lives
-	// under <volume root>/index_server. Excluding it here, independent of
-	// the configurable path list below, is what breaks the feedback loop:
-	// the server would otherwise re-analyse the files it just wrote.
-	BDirectory rootDir;
-	if (volume.GetRootDirectory(&rootDir) == B_OK) {
-		BPath volumeIndexDir(&rootDir);
-		volumeIndexDir.Append(kIndexServerDirectory);
-		if (path_is_or_is_under(path, BString(volumeIndexDir.Path())))
-			return true;
-	}
+	// under volume_index_server_directory(). Excluding it here, independent
+	// of the configurable path list below, is what breaks the feedback
+	// loop: the server would otherwise re-analyse the files it just wrote.
+	BPath volumeIndexDir = volume_index_server_directory(volume);
+	if (path_is_or_is_under(path, BString(volumeIndexDir.Path())))
+		return true;
 
 	BAutolock lock(fLock);
 	bool listed = false;
