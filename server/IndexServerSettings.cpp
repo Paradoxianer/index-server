@@ -70,6 +70,14 @@ IndexServerSettings::_SetDefaults()
 		fPaths.push_back(BString(path.Path()));
 	if (find_directory(B_SYSTEM_PACKAGES_DIRECTORY, &path) == B_OK)
 		fPaths.push_back(BString(path.Path()));
+	// index_server's own binaries (and its add-ons/preflet/search app) get
+	// installed here during development; re-installing one triggers a stat
+	// changed event that reaches AddOnMonitorHandler like any other file
+	// change, disabling/reloading the add-on while it's still in active
+	// use - the same class of feedback loop this exclude list exists to
+	// avoid, just for our own executables instead of our own data.
+	if (find_directory(B_SYSTEM_NONPACKAGED_DIRECTORY, &path) == B_OK)
+		fPaths.push_back(BString(path.Path()));
 }
 
 
