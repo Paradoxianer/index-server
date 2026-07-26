@@ -159,6 +159,7 @@ AnalyserDispatcher::Stopped()
 void
 AnalyserDispatcher::AnalyseEntry(const entry_ref& ref)
 {
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->AnalyseEntry(ref);
 }
@@ -167,6 +168,7 @@ AnalyserDispatcher::AnalyseEntry(const entry_ref& ref)
 void
 AnalyserDispatcher::DeleteEntry(const entry_ref& ref)
 {
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->DeleteEntry(ref);
 }
@@ -175,6 +177,7 @@ AnalyserDispatcher::DeleteEntry(const entry_ref& ref)
 void
 AnalyserDispatcher::MoveEntry(const entry_ref& oldRef, const entry_ref& newRef)
 {
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->MoveEntry(oldRef, newRef);
 }
@@ -183,6 +186,7 @@ AnalyserDispatcher::MoveEntry(const entry_ref& oldRef, const entry_ref& newRef)
 void
 AnalyserDispatcher::LastEntry()
 {
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->LastEntry();
 }

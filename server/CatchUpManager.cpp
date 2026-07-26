@@ -10,6 +10,7 @@
 
 #include <vector>
 
+#include <Autolock.h>
 #include <Debug.h>
 #include <Path.h>
 #include <Query.h>
@@ -62,6 +63,7 @@ CatchUpAnalyser::StartAnalysing()
 void
 CatchUpAnalyser::AnalyseEntry(const entry_ref& ref)
 {
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
 		FileAnalyser* analyser = fFileAnalyserList.ItemAt(i);
 		const analyser_settings& settings = analyser->CachedSettings();
