@@ -270,7 +270,7 @@ bool
 CLuceneWriteDataBase::_RemoveDocument(wchar_t* wPath, IndexReader* reader)
 {
 	try {
-		Term term(_T("path"), wPath);
+		Term term(kPathField, wPath);
 		reader->deleteDocuments(&term);
 	} catch (CLuceneError &error) {
 		STRACE("CLuceneError: deleteDocuments %s\n", error.what());
@@ -316,10 +316,10 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 		return false;
 
 	Document *document = new Document;
-	Field contentField(_T("contents"), fileReader,
+	Field contentField(kContentsField, fileReader,
 		Field::STORE_NO | Field::INDEX_TOKENIZED);
 	document->add(contentField);
-	Field pathField(_T("path"), wPath,
+	Field pathField(kPathField, wPath,
 		Field::STORE_YES | Field::INDEX_UNTOKENIZED);
 	document->add(pathField);
 

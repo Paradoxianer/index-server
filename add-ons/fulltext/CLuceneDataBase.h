@@ -22,6 +22,11 @@ using namespace lucene::index;
 using namespace lucene::analysis::standard;
 
 
+// Shared with the search app, which reads these same fields back out.
+const TCHAR* const kContentsField = _T("contents");
+const TCHAR* const kPathField = _T("path");
+
+
 class CLuceneWriteDataBase : public TextWriteDataBase {
 public:
 								CLuceneWriteDataBase(const BPath& databasePath);
