@@ -5,7 +5,7 @@
  * Authors:
  *		Matthias Lindner
  */
-#include "TranslatorTimeout.h"
+#include "RunWithTimeout.h"
 
 #include <new>
 
@@ -14,9 +14,9 @@ namespace {
 
 
 struct call_params {
-	translator_call		call;
+	bounded_call		call;
 	void*				cookie;
-	translator_cleanup	cleanup;
+	bounded_cleanup		cleanup;
 	sem_id				doneSemaphore;
 	status_t			result;
 	// 0 while neither side has finished yet; whichever side gets back the
@@ -52,8 +52,8 @@ run_call(void* data)
 
 
 status_t
-run_with_timeout(translator_call call, void* cookie,
-	translator_cleanup cleanup, bigtime_t timeout)
+run_with_timeout(bounded_call call, void* cookie, bounded_cleanup cleanup,
+	bigtime_t timeout)
 {
 	call_params* params = new(std::nothrow) call_params;
 	if (params == NULL)
@@ -64,15 +64,15 @@ run_with_timeout(translator_call call, void* cookie,
 	params->result = B_ERROR;
 	params->finishOrder = 0;
 
-	params->doneSemaphore = create_sem(0, "translator call done");
+	params->doneSemaphore = create_sem(0, "bounded call done");
 	if (params->doneSemaphore < 0) {
 		status_t error = params->doneSemaphore;
 		delete params;
 		return error;
 	}
 
-	thread_id thread = spawn_thread(run_call, "translator call",
-		B_LOW_PRIORITY, params);
+	thread_id thread = spawn_thread(run_call, "bounded call", B_LOW_PRIORITY,
+		params);
 	if (thread < 0) {
 		status_t error = thread;
 		delete_sem(params->doneSemaphore);

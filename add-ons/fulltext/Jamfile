@@ -1,11 +1,12 @@
 SubDir HAIKU_TOP src add-ons index_server fulltext ;
 
 UsePrivateHeaders index_server shared ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src add-ons index_server shared ] ;
 
 local sources =
 	CLuceneDataBase.cpp
 	FullTextAnalyser.cpp
-	TranslatorTimeout.cpp
+	RunWithTimeout.cpp
 
 	IndexServerAddOn.cpp
 	;
@@ -23,3 +24,6 @@ Addon FullTextAnalyser :
 
 SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
 	+= [ FDirName $(SUBDIR) $(DOTDOT) ] ;
+
+SEARCH on [ FGristFiles RunWithTimeout.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;

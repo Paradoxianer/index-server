@@ -3,22 +3,71 @@
 #include <new>
 #include <string.h>
 
-#include <MediaFile.h>
+#include <File.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <String.h>
 
-#include <audioproperties.h>
 #include <tag.h>
 #include <fileref.h>
+
+#include "RunWithTimeout.h"
+
+
+// A hung or pathological file must not stall the whole VolumeWorker thread
+// (it processes every entry of a volume serially), same reasoning as
+// FullTextAnalyser's translator timeout.
+static const bigtime_t kTagReadTimeout = 5 * 1000000;
+
+
+namespace {
+
+
+// Owns the read-out tag fields itself rather than pointing at the caller's
+// stack locals: on timeout, ownership passes to the still-running helper
+// thread (see RunWithTimeout.h), which may still be inside TagLib.
+struct tag_read_cookie {
+	BString	path;
+	BString	artist;
+	BString	title;
+	BString	album;
+	bool	hasTag;
+};
+
+
+status_t
+do_read_tags(void* data)
+{
+	tag_read_cookie* cookie = (tag_read_cookie*)data;
+	TagLib::FileRef tagFile(cookie->path.String());
+	TagLib::Tag* tag = tagFile.tag();
+	cookie->hasTag = (tag != NULL);
+	if (tag != NULL) {
+		cookie->artist = tag->artist().toCString(true);
+		cookie->title = tag->title().toCString(true);
+		cookie->album = tag->album().toCString(true);
+	}
+	return B_OK;
+}
+
+
+void
+cleanup_read_tags(void* data)
+{
+	delete (tag_read_cookie*)data;
+}
+
+
+}	// namespace
 
 
 AudioTagAnalyser::AudioTagAnalyser(BString name, const BVolume& volume)
 	:
 	FileAnalyser(name, volume)
 {
-	
+
 }
 
 
@@ -57,54 +106,34 @@ AudioTagAnalyser::AnalyseEntry(const entry_ref& ref)
 
 	BPath path(&ref);
 
-	TagLib::FileRef tagFile(path.Path());
-	TagLib::Tag* tag = tagFile.tag();
-	if (!tag)
+	tag_read_cookie* cookie = new(std::nothrow) tag_read_cookie;
+	if (cookie == NULL)
 		return;
+	cookie->path = path.Path();
+	cookie->hasTag = false;
 
-	TagLib::String artist = tag->artist();
-	TagLib::String title = tag->title();
-	TagLib::String album = tag->album();
-	printf("artist: %s, title: %s, album: %s\n", artist.toCString(),
-		   title.toCString(), album.toCString());
+	status_t status = run_with_timeout(do_read_tags, cookie,
+		cleanup_read_tags, kTagReadTimeout);
+	if (status == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; must not
+		// touch it here.
+		return;
+	}
+	if (status != B_OK || !cookie->hasTag) {
+		delete cookie;
+		return;
+	}
 
 	BFile file(&ref, B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	const char* cArtist = artist.toCString(true);
-	file.WriteAttr("Audio:Artist", B_STRING_TYPE, 0, cArtist, strlen(cArtist));
-	const char* cTitle = title.toCString(true);
-	file.WriteAttr("Media:Title", B_STRING_TYPE, 0, cTitle, strlen(cTitle));
-	const char* cAlbum = album.toCString(true);
-	file.WriteAttr("Audio:Album", B_STRING_TYPE, 0, cAlbum, strlen(cAlbum));
-/*
-	BMediaFile mediaFile(&ref);
-	if (mediaFile.InitCheck() != B_OK)
-		return;
-
-	BMessage metaData;
-	if (mediaFile.GetMetaData(&metaData) != B_OK)
-		return;
-
-	BFile file(&ref, B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	BString dataString;
-	if (metaData.FindString("artist", &dataString) == B_OK)
-		file.WriteAttr("Audio:Artist", B_STRING_TYPE, 0, dataString.String(),
-			dataString.Length());
-	if (metaData.FindString("title", &dataString) == B_OK)
-		file.WriteAttr("Media:Title", B_STRING_TYPE, 0, dataString.String(),
-			dataString.Length());
-	if (metaData.FindString("album", &dataString) == B_OK)
-		file.WriteAttr("Audio:Album", B_STRING_TYPE, 0, dataString.String(),
-			dataString.Length());
-	if (metaData.FindString("track", &dataString) == B_OK)
-		file.WriteAttr("Audio:Track", B_STRING_TYPE, 0, dataString.String(),
-			dataString.Length());*/
-	
+	if (file.InitCheck() == B_OK) {
+		file.WriteAttr("Audio:Artist", B_STRING_TYPE, 0,
+			cookie->artist.String(), cookie->artist.Length());
+		file.WriteAttr("Media:Title", B_STRING_TYPE, 0,
+			cookie->title.String(), cookie->title.Length());
+		file.WriteAttr("Audio:Album", B_STRING_TYPE, 0,
+			cookie->album.String(), cookie->album.Length());
+	}
+	delete cookie;
 }
 
 

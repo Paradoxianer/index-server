@@ -15,7 +15,7 @@
 
 #include "CLuceneDataBase.h"
 #include "IndexServerPrivate.h"
-#include "TranslatorTimeout.h"
+#include "RunWithTimeout.h"
 
 
 #define DEBUG_FULLTEXT_ANALYSER
@@ -37,7 +37,7 @@ namespace {
 
 // Owns the file itself rather than pointing at the caller's stack local: on
 // timeout, ownership passes to the still-running helper thread (see
-// TranslatorTimeout.h), which may still be reading it.
+// RunWithTimeout.h), which may still be reading it.
 struct identify_cookie {
 	BFile*				source;
 	translator_info		info;

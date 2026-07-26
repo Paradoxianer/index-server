@@ -1,9 +1,11 @@
 SubDir HAIKU_TOP src add-ons index_server audiotags ;
 
 UsePrivateHeaders index_server shared ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src add-ons index_server shared ] ;
 
 local sources =
 	AudioTagAnalyser.cpp
+	RunWithTimeout.cpp
 
 	IndexServerAddOn.cpp
 	;
@@ -21,3 +23,6 @@ Addon AudioTagAnalyser :
 
 SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
 	+= [ FDirName $(SUBDIR) $(DOTDOT) ] ;
+
+SEARCH on [ FGristFiles RunWithTimeout.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;

@@ -16,7 +16,7 @@
 #include <File.h>
 #include <TranslatorRoster.h>
 
-#include "TranslatorTimeout.h"
+#include "RunWithTimeout.h"
 
 
 #define DEBUG_CLUCENE_DATABASE
@@ -44,7 +44,7 @@ namespace {
 
 // Owns the files itself rather than pointing at the caller's stack locals:
 // on timeout, ownership passes to the still-running helper thread (see
-// TranslatorTimeout.h), which may still be reading/writing them.
+// RunWithTimeout.h), which may still be reading/writing them.
 struct translate_cookie {
 	BFile*	source;
 	BFile*	destination;
