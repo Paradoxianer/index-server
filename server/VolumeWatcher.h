@@ -136,6 +136,10 @@ public:
 			//! thread safe
 			bool				AddAnalyser(FileAnalyser* analyser);
 			bool				RemoveAnalyser(const BString& name);
+			//! Re-run catch up for every registered analyser on this
+			//! volume; no-ops if one is already in progress. See
+			//! FileAnalyser::RequestRescan().
+			void				RequestRescan(const BString& name);
 
 			void				GetSecureEntries(list_collection& collection);
 

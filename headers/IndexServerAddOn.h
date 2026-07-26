@@ -19,6 +19,11 @@
 #include "Referenceable.h"
 
 
+//! Sent to the IndexServer BApplication by FileAnalyser::RequestRescan();
+//! carries "analyser" (BString) and "device" (int32, BVolume::Device()).
+const uint32 kMsgRequestRescan = '&Rsc';
+
+
 class analyser_settings {
 public:
 						analyser_settings();
@@ -84,6 +89,15 @@ public:
 
 			const BString&		Name() const { return fName; }
 			const BVolume&		Volume() const { return fVolume; }
+
+			//! Ask index_server to reindex everything again for this
+			//! analyser - e.g. a Translator it depends on was just
+			//! installed, making previously unreadable files readable.
+			//! Resets this analyser's own sync position back to the start
+			//! and triggers a fresh catch up; other analysers registered
+			//! on the same volume are folded into that same run rather
+			//! than each getting their own (see #2).
+			void				RequestRescan();
 
 	virtual status_t			InitCheck() = 0;
 

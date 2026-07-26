@@ -8,6 +8,7 @@
 
 #include "IndexServerAddOn.h"
 
+#include <Application.h>
 #include <Debug.h>
 #include <Directory.h>
 #include <File.h>
@@ -231,4 +232,19 @@ void
 FileAnalyser::UpdateSettingsCache()
 {
 	fCachedSettings = fAnalyserSettings->RawSettings();
+}
+
+
+void
+FileAnalyser::RequestRescan()
+{
+	if (fAnalyserSettings.Get() != NULL) {
+		fAnalyserSettings->SetSyncPosition(0);
+		fAnalyserSettings->WriteSettings();
+	}
+
+	BMessage message(kMsgRequestRescan);
+	message.AddString("analyser", fName);
+	message.AddInt32("device", fVolume.Device());
+	be_app_messenger.SendMessage(&message);
 }

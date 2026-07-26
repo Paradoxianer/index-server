@@ -549,6 +549,15 @@ VolumeWatcher::RemoveAnalyser(const BString& name)
 
 
 void
+VolumeWatcher::RequestRescan(const BString& name)
+{
+	BAutolock _(this);
+	printf("VolumeWatcher::RequestRescan requested by %s\n", name.String());
+	fCatchUpManager.CatchUp();
+}
+
+
+void
 VolumeWatcher::GetSecureEntries(list_collection& collection)
 {
 	BAutolock _(this);

@@ -121,7 +121,28 @@ IndexServer::ReadyToRun()
 void
 IndexServer::MessageReceived(BMessage *message)
 {
-	BApplication::MessageReceived(message);
+	switch (message->what) {
+		case kMsgRequestRescan:
+		{
+			BString name;
+			int32 device;
+			if (message->FindString("analyser", &name) != B_OK
+				|| message->FindInt32("device", &device) != B_OK) {
+				break;
+			}
+			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
+				VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
+				if (watcher->Volume().Device() == device) {
+					watcher->RequestRescan(name);
+					break;
+				}
+			}
+			break;
+		}
+
+		default:
+			BApplication::MessageReceived(message);
+	}
 }
 
 
