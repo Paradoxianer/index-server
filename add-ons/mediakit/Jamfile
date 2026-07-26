@@ -1,0 +1,19 @@
+SubDir HAIKU_TOP src add-ons index_server mediakit ;
+
+UsePrivateHeaders index_server shared media ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src add-ons index_server shared ] ;
+
+Addon MediaKitAnalyser :
+	MediaKitAnalyser.cpp
+	RunWithTimeout.cpp
+
+	IndexServerAddOn.cpp
+	:
+	be media [ TargetLibstdc++ ]
+	;
+
+SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) ] ;
+
+SEARCH on [ FGristFiles RunWithTimeout.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
