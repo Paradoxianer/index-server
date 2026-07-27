@@ -1,0 +1,6 @@
+service x-vnd.Haiku-index_server {
+	launch /system/servers/index_server
+	legacy
+	on initial_volumes_mounted
+	no_safemode
+}
