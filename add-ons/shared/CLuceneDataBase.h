@@ -13,6 +13,7 @@
 
 #include <Locker.h>
 #include <Path.h>
+#include <String.h>
 
 #include "TextDataBase.h"
 
@@ -38,6 +39,15 @@ public:
 			status_t			AddDocument(const entry_ref& ref);
 			status_t			RemoveDocument(const entry_ref& ref);
 			status_t			Commit();
+
+			//! Indexes already-extracted plain text under ref's path,
+			//! bypassing the BTranslatorRoster/queue pipeline entirely -
+			//! for analysers that produce text themselves (e.g. a mail
+			//! body) instead of pointing at a file BTranslatorRoster can
+			//! convert. Commits immediately rather than joining the
+			//! regular queue/Commit() cycle.
+			status_t			AddDocumentWithText(const entry_ref& ref,
+								const BString& text);
 
 private:
 			IndexWriter*		_OpenIndexWriter();

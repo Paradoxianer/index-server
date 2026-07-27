@@ -184,6 +184,57 @@ CLuceneWriteDataBase::Commit()
 }
 
 
+status_t
+CLuceneWriteDataBase::AddDocumentWithText(const entry_ref& ref,
+	const BString& text)
+{
+	STRACE("AddDocumentWithText %s (%ld bytes)\n", ref.name,
+		(long)text.Length());
+
+	BAutolock lock(sCLuceneLock);
+
+	std::vector<entry_ref> single;
+	single.push_back(ref);
+	_RemoveDocuments(single);
+
+	fIndexWriter = _OpenIndexWriter();
+	if (fIndexWriter == NULL)
+		return B_ERROR;
+
+	BPath path(&ref);
+	wchar_t* wPath = to_wchar(path.Path());
+	wchar_t* wText = to_wchar(text.String());
+	status_t status = B_OK;
+	if (wPath == NULL || wText == NULL) {
+		status = B_NO_MEMORY;
+	} else {
+		Document* document = new Document;
+		Field contentField(kContentsField, wText,
+			Field::STORE_NO | Field::INDEX_TOKENIZED);
+		document->add(contentField);
+		Field pathField(kPathField, wPath,
+			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
+		document->add(pathField);
+
+		try {
+			fIndexWriter->addDocument(document);
+		} catch (CLuceneError &error) {
+			STRACE("CLuceneError addDocument (text) %s\n", error.what());
+			status = B_ERROR;
+		}
+		delete document;
+	}
+	delete[] wPath;
+	delete[] wText;
+
+	fIndexWriter->close();
+	delete fIndexWriter;
+	fIndexWriter = NULL;
+
+	return status;
+}
+
+
 IndexWriter*
 CLuceneWriteDataBase::_OpenIndexWriter()
 {

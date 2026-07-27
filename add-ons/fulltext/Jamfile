@@ -25,5 +25,5 @@ Addon FullTextAnalyser :
 SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
 	+= [ FDirName $(SUBDIR) $(DOTDOT) ] ;
 
-SEARCH on [ FGristFiles RunWithTimeout.cpp ]
+SEARCH on [ FGristFiles RunWithTimeout.cpp CLuceneDataBase.cpp ]
 	+= [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
