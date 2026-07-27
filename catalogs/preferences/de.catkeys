@@ -1,0 +1,11 @@
+1	german	x-vnd.Haiku-IndexServerSettings	3151987872
+Analysers	SettingsWindow		Analyser
+Only the listed folders	SettingsWindow		Nur die aufgelisteten Ordner
+Defaults	SettingsWindow		Standardwerte
+Index Server	System name		Index Server
+All folders except the listed ones	SettingsWindow		Alle Ordner außer den aufgelisteten
+Revert	SettingsWindow		Zurücksetzen
+Path	SettingsWindow		Pfad
+Add…	SettingsWindow		Hinzufügen…
+Remove	SettingsWindow		Entfernen
+No analysers installed	SettingsWindow		Keine Analyser installiert

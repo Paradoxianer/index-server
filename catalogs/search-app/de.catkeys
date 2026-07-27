@@ -1,0 +1,8 @@
+1	german	x-vnd.Haiku-IndexServerSearch	1106551247
+%ld result(s) across %ld indexed volume(s).	SearchWindow		%ld Ergebnis(se) über %ld indizierte(s) Volume(s).
+Score	SearchWindow		Bewertung
+Path	SearchWindow		Pfad
+Search	SearchWindow		Suchen
+Type something to search for.	SearchWindow		Suchbegriff eingeben.
+Index Search	System name		Index-Suche
+No volume has a full text index yet.	SearchWindow		Noch kein Volltextindex auf einem Volume vorhanden.

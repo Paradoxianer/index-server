@@ -27,3 +27,10 @@ SEARCH on [ FGristFiles AddOnMonitorHandler.cpp NodeMonitorHandler.cpp ]
 
 SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
 	+= [ FDirName $(SUBDIR) $(DOTDOT) $(DOTDOT) add-ons index_server ] ;
+
+DoCatalogs index_server :
+	x-vnd.Haiku-index_server
+	:
+	IndexProgressNotifier.cpp
+	CatchUpManager.cpp
+	;

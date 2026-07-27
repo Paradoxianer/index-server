@@ -1,0 +1,4 @@
+1	german	x-vnd.Haiku-index_server	1340894966
+Indexing %s (%s)	CatchUpManager		Indiziere %s (%s)
+%ld files indexed	IndexProgressNotifier		%ld Dateien indiziert
+%ld / %ld files	IndexProgressNotifier		%ld / %ld Dateien
