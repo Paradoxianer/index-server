@@ -1,0 +1,32 @@
+name			index_server
+version			1.0.0-1
+architecture	x86_64
+summary			"Live content indexing and full-text search for Haiku"
+description		"Watches your volumes and keeps a full-text index (via CLucene)
+and a set of BFS attributes (EXIF, audio tags, media metadata) up to
+date as files change. Includes a settings preflet and a standalone
+search window - full-text results don't show up in Tracker's own
+Query mechanism, since the index lives outside BFS.
+
+Originally started by Clemens Zeidler (GSoC 2010), revived here."
+packager		"Matthias Lindner <two4god@gmail.com>"
+vendor			"Haiku Index Server Rework"
+copyrights		{
+	"2010 Clemens Zeidler"
+	"2026 Haiku, Inc."
+}
+licenses		{
+	"MIT"
+}
+
+provides {
+	index_server = 1.0.0
+	cmd:index_server
+}
+
+requires {
+	haiku >= r1~beta5
+	clucene >= 2.3.3.4
+	taglib >= 1.13
+	libexif >= 0.6.22
+}
