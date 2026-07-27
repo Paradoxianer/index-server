@@ -4,3 +4,4 @@ SubInclude HAIKU_TOP src add-ons index_server fulltext ;
 SubInclude HAIKU_TOP src add-ons index_server audiotags ;
 SubInclude HAIKU_TOP src add-ons index_server exif ;
 SubInclude HAIKU_TOP src add-ons index_server mediakit ;
+SubInclude HAIKU_TOP src add-ons index_server mail ;

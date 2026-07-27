@@ -1,0 +1,30 @@
+SubDir HAIKU_TOP src add-ons index_server mail ;
+
+UsePrivateHeaders index_server shared mail ;
+SubDirHdrs [ FDirName $(HAIKU_TOP) src add-ons index_server shared ] ;
+
+local sources =
+	MailAnalyser.cpp
+	CLuceneDataBase.cpp
+	RunWithTimeout.cpp
+
+	IndexServerAddOn.cpp
+	;
+
+UseBuildFeatureHeaders clucene ;
+Includes [ FGristFiles $(sources) ] : [ BuildFeatureAttribute clucene : headers ] ;
+		# Dependency needed to trigger downloading/unzipping the package before
+		# compiling the files.
+
+Addon MailAnalyser :
+	$(sources)
+	:
+	be translation libmail.so [ BuildFeatureAttribute clucene : libraries ]
+		[ TargetLibstdc++ ]
+	;
+
+SEARCH on [ FGristFiles IndexServerAddOn.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) ] ;
+
+SEARCH on [ FGristFiles RunWithTimeout.cpp CLuceneDataBase.cpp ]
+	+= [ FDirName $(SUBDIR) $(DOTDOT) shared ] ;
