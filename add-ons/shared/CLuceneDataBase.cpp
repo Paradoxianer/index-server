@@ -78,6 +78,9 @@ BLocker CLuceneWriteDataBase::sCLuceneLock("CLucene index lock");
 
 wchar_t* to_wchar(const char *str)
 {
+	if (str == NULL)
+		return NULL ;
+
 	int size = strlen(str) * sizeof(wchar_t) ;
 	wchar_t *wStr = new wchar_t[size] ;
 
@@ -134,7 +137,7 @@ status_t
 CLuceneWriteDataBase::RemoveDocument(const entry_ref& ref)
 {
 	// check if already in the queue
-	for (unsigned int i = 0; i < fAddQueue.size(); i++) {
+	for (unsigned int i = 0; i < fDeleteQueue.size(); i++) {
 		if (fDeleteQueue.at(i) == ref)
 			return B_OK;
 	}
