@@ -38,6 +38,9 @@ public:
 									const entry_ref& newRef);
 			void				LastEntry();
 
+			status_t			HandleQuery(const BMessage& query,
+									BMessage& reply);
+
 private:
 	inline	bool				_InterestingEntry(const entry_ref& ref);
 	inline	bool				_IsInIndexDirectory(const entry_ref& ref);

@@ -13,6 +13,8 @@
 #include <Path.h>
 #include <String.h>
 
+#include "IndexServerPrivate.h"
+
 
 VolumeObserverHandler::VolumeObserverHandler(IndexServer* indexServer)
 	:
@@ -137,6 +139,48 @@ IndexServer::MessageReceived(BMessage *message)
 					break;
 				}
 			}
+			break;
+		}
+
+		case kMsgQuery:
+		{
+			BString queryString;
+			message->FindString("query", &queryString);
+
+			// BMessage::FindInt32() zeroes *value up front even when the
+			// field is missing, so a default has to be applied explicitly
+			// rather than left in place for a failed Find to not disturb.
+			int32 maxResults = 100;
+			int32 requestedMax;
+			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
+				maxResults = requestedMax;
+
+			BMessage reply;
+			int32 searchedVolumes = 0;
+			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
+				VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
+
+				BMessage volumeQuery;
+				volumeQuery.AddString("query", queryString);
+				volumeQuery.AddInt32("maxResults", maxResults);
+				BMessage volumeReply;
+				status_t status = watcher->HandleQuery(kFullTextAnalyserName,
+					volumeQuery, volumeReply);
+				if (status != B_OK)
+					continue;
+				searchedVolumes++;
+
+				entry_ref ref;
+				float score;
+				for (int32 j = 0; volumeReply.FindRef("refs", j, &ref)
+						== B_OK; j++) {
+					volumeReply.FindFloat("scores", j, &score);
+					reply.AddRef("refs", &ref);
+					reply.AddFloat("scores", score);
+				}
+			}
+			reply.AddInt32("searchedVolumes", searchedVolumes);
+			message->SendReply(&reply);
 			break;
 		}
 

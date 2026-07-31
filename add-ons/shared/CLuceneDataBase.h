@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <Locker.h>
+#include <Message.h>
 #include <Path.h>
 #include <String.h>
 
@@ -48,6 +49,14 @@ public:
 			//! regular queue/Commit() cycle.
 			status_t			AddDocumentWithText(const entry_ref& ref,
 								const BString& text);
+
+			//! Runs a free-text query against the on-disk index and
+			//! appends up to maxResults matches to \a reply as repeated
+			//! "refs"/"scores" fields (same order). Shares sCLuceneLock
+			//! with the write path, so a search can't tear down a commit
+			//! that's replacing segment files underneath it.
+			status_t			Search(const BString& queryString,
+								int32 maxResults, BMessage& reply);
 
 private:
 			IndexWriter*		_OpenIndexWriter();

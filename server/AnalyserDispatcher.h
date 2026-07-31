@@ -10,6 +10,7 @@
 
 
 #include <Looper.h>
+#include <Message.h>
 #include <String.h>
 
 #include "IndexServerAddOn.h"
@@ -37,6 +38,10 @@ public:
 			//! thread safe
 			bool				AddAnalyser(FileAnalyser* analyser);
 			bool				RemoveAnalyser(const BString& name);
+
+			//! thread safe
+			status_t			HandleQuery(const BString& analyserName,
+									const BMessage& query, BMessage& reply);
 
 			void				WriteAnalyserSettings();
 			void				SetSyncPosition(bigtime_t time);

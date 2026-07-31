@@ -7,8 +7,6 @@
  */
 #include "SearchWindow.h"
 
-#include <vector>
-
 #include <Application.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -16,15 +14,12 @@
 #include <ColumnTypes.h>
 #include <Entry.h>
 #include <LayoutBuilder.h>
+#include <Messenger.h>
 #include <Path.h>
 #include <Roster.h>
 #include <StringView.h>
 #include <TextControl.h>
-#include <Volume.h>
-#include <VolumeRoster.h>
 
-#include "CLuceneSearcher.h"
-#include "FullTextAnalyser.h"
 #include "IndexServerPrivate.h"
 
 
@@ -94,34 +89,39 @@ SearchWindow::_RunSearch()
 		return;
 	}
 
-	std::vector<search_result> results;
-
-	BVolumeRoster volumeRoster;
-	BVolume volume;
-	int32 searchedVolumes = 0;
-	while (volumeRoster.GetNextVolume(&volume) == B_OK) {
-		if (volume.Capacity() <= 0 || !volume.KnowsQuery())
-			continue;
-
-		BPath indexPath = volume_index_server_directory(volume);
-		indexPath.Append(kFullTextDirectory);
-
-		CLuceneSearcher searcher(indexPath);
-		if (!searcher.IndexExists())
-			continue;
-		searchedVolumes++;
-		searcher.Search(queryString, results);
+	BMessenger indexServer(kIndexServerSignature);
+	if (!indexServer.IsValid()) {
+		fStatusView->SetText(B_TRANSLATE("index_server is not running."));
+		return;
 	}
 
-	for (size_t i = 0; i < results.size(); i++) {
+	BMessage query(kMsgQuery);
+	query.AddString("query", queryString);
+
+	BMessage reply;
+	if (indexServer.SendMessage(&query, &reply) != B_OK) {
+		fStatusView->SetText(B_TRANSLATE("Could not reach index_server."));
+		return;
+	}
+
+	entry_ref ref;
+	float score;
+	int32 count = 0;
+	for (int32 i = 0; reply.FindRef("refs", i, &ref) == B_OK; i++) {
+		reply.FindFloat("scores", i, &score);
+
+		BPath path(&ref);
 		BRow* row = new BRow();
-		row->SetField(new BStringField(results[i].path.String()),
-			kPathColumn);
+		row->SetField(new BStringField(path.Path()), kPathColumn);
 		BString scoreText;
-		scoreText.SetToFormat("%.2f", results[i].score);
+		scoreText.SetToFormat("%.2f", score);
 		row->SetField(new BStringField(scoreText.String()), kScoreColumn);
 		fResultsView->AddRow(row);
+		count++;
 	}
+
+	int32 searchedVolumes = 0;
+	reply.FindInt32("searchedVolumes", &searchedVolumes);
 
 	BString status;
 	if (searchedVolumes == 0) {
@@ -129,7 +129,7 @@ SearchWindow::_RunSearch()
 	} else {
 		status.SetToFormat(
 			B_TRANSLATE("%ld result(s) across %ld indexed volume(s)."),
-			(long)results.size(), (long)searchedVolumes);
+			(long)count, (long)searchedVolumes);
 	}
 	fStatusView->SetText(status.String());
 }

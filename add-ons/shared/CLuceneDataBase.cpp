@@ -13,6 +13,7 @@
 
 #include <Autolock.h>
 #include <Directory.h>
+#include <Entry.h>
 #include <File.h>
 #include <TranslatorRoster.h>
 
@@ -29,6 +30,8 @@
 
 
 using namespace lucene::document;
+using namespace lucene::queryParser;
+using namespace lucene::search;
 using namespace lucene::util;
 
 
@@ -233,6 +236,72 @@ CLuceneWriteDataBase::AddDocumentWithText(const entry_ref& ref,
 	fIndexWriter->close();
 	delete fIndexWriter;
 	fIndexWriter = NULL;
+
+	return status;
+}
+
+
+status_t
+CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
+	BMessage& reply)
+{
+	BAutolock lock(sCLuceneLock);
+
+	wchar_t* wQuery = to_wchar(queryString.String());
+	if (wQuery == NULL)
+		return B_NO_MEMORY;
+
+	IndexReader* reader = NULL;
+	IndexSearcher* searcher = NULL;
+	Query* query = NULL;
+	Hits* hits = NULL;
+	status_t status = B_ENTRY_NOT_FOUND;
+
+	try {
+		if (IndexReader::indexExists(fDataBasePath.Path())) {
+			reader = IndexReader::open(fDataBasePath.Path());
+			searcher = new IndexSearcher(reader);
+			query = QueryParser::parse(wQuery, kContentsField,
+				&fStandardAnalyzer);
+			hits = searcher->search(query);
+
+			int32 count = (int32)hits->length();
+			if (count > maxResults)
+				count = maxResults;
+
+			for (int32 i = 0; i < count; i++) {
+				Document& doc = hits->doc(i);
+				const TCHAR* wPath = doc.get(kPathField);
+				if (wPath == NULL)
+					continue;
+
+				char path[B_PATH_NAME_LENGTH];
+				wcstombs(path, wPath, sizeof(path));
+
+				entry_ref ref;
+				BEntry entry(path);
+				if (entry.InitCheck() != B_OK || entry.GetRef(&ref) != B_OK)
+					continue;
+
+				reply.AddRef("refs", &ref);
+				reply.AddFloat("scores", hits->score(i));
+			}
+			status = B_OK;
+		}
+	} catch (CLuceneError &error) {
+		STRACE("CLuceneError: Search %s\n", error.what());
+		status = B_ERROR;
+	}
+
+	delete[] wQuery;
+	delete hits;
+	delete query;
+	if (searcher != NULL)
+		searcher->close();
+	delete searcher;
+	if (reader != NULL)
+		reader->close();
+	delete reader;
 
 	return status;
 }

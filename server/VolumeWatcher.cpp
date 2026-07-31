@@ -222,6 +222,18 @@ AnalyserDispatcher::RemoveAnalyser(const BString& name)
 }
 
 
+status_t
+AnalyserDispatcher::HandleQuery(const BString& analyserName,
+	const BMessage& query, BMessage& reply)
+{
+	BAutolock _(this);
+	FileAnalyser* analyser = _FindAnalyser(analyserName);
+	if (analyser == NULL)
+		return B_NAME_NOT_FOUND;
+	return analyser->HandleQuery(query, reply);
+}
+
+
 FileAnalyser*
 AnalyserDispatcher::_FindAnalyser(const BString& name)
 {
@@ -554,6 +566,14 @@ VolumeWatcher::RequestRescan(const BString& name)
 	BAutolock _(this);
 	printf("VolumeWatcher::RequestRescan requested by %s\n", name.String());
 	fCatchUpManager.CatchUp();
+}
+
+
+status_t
+VolumeWatcher::HandleQuery(const BString& analyserName,
+	const BMessage& query, BMessage& reply)
+{
+	return fVolumeWorker->HandleQuery(analyserName, query, reply);
 }
 
 

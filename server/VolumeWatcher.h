@@ -141,6 +141,11 @@ public:
 			//! FileAnalyser::RequestRescan().
 			void				RequestRescan(const BString& name);
 
+			//! thread safe
+			status_t		HandleQuery(const BString& analyserName,
+								const BMessage& query,
+								BMessage& reply);
+
 			void				GetSecureEntries(list_collection& collection);
 
 			bool				FindEntryRef(ino_t node, dev_t device,

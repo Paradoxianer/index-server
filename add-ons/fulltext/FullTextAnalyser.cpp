@@ -142,6 +142,26 @@ FullTextAnalyser::LastEntry()
 }
 
 
+status_t
+FullTextAnalyser::HandleQuery(const BMessage& query, BMessage& reply)
+{
+	BString queryString;
+	if (query.FindString("query", &queryString) != B_OK)
+		return B_BAD_VALUE;
+
+	// BMessage::FindInt32() zeroes *value up front even when the field is
+	// missing (see BMessage.cpp's DEFINE_FUNCTIONS macro), so the usual
+	// "declare with a default, ignore a failed Find" idiom silently
+	// clobbers the default to 0 - check the status explicitly instead.
+	int32 maxResults = 100;
+	int32 requestedMax;
+	if (query.FindInt32("maxResults", &requestedMax) == B_OK)
+		maxResults = requestedMax;
+
+	return fWriteDataBase->Search(queryString, maxResults, reply);
+}
+
+
 bool
 FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 {

@@ -12,6 +12,7 @@
 #include <Autolock.h>
 #include <Entry.h>
 #include <image.h>
+#include <Message.h>
 #include <ObjectList.h>
 #include <String.h>
 #include <Volume.h>
@@ -108,6 +109,15 @@ public:
 	//! If the indexer send a bunch of entry this indicates that the last one
 	//! has been arrived.
 	virtual void				LastEntry() { }
+
+	//! Answer a content-search query against whatever this analyser has
+	//! indexed. Most analysers write BFS attributes instead, which normal
+	//! BFS queries already cover, so the default is B_NOT_SUPPORTED - only
+	//! an analyser with its own out-of-BFS index (e.g. the fulltext
+	//! CLucene index) needs to override this.
+	virtual status_t			HandleQuery(const BMessage& query,
+									BMessage& reply)
+									{ return B_NOT_SUPPORTED; }
 
 protected:
 			BVolume				fVolume;

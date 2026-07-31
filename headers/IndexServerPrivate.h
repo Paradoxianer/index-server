@@ -17,6 +17,10 @@
 #include <VolumeRoster.h>
 
 
+// Must match IndexServer's BApplication() signature (IndexServer.cpp) and
+// index_server.rdef's app_signature resource.
+const BString kIndexServerSignature = "application/x-vnd.Haiku-index_server";
+
 const BString kIndexServerDirectory = "index_server";
 const BString kVolumeStatusFileName = "VolumeStatus";
 const BString kSettingsFileName = "settings";
@@ -80,5 +84,16 @@ const uint32 kGetAddOnInfos = 'GAIn';
 
 const uint32 kEnableAddOn = 'EnaA';
 const uint32 kDisableAddOn = 'DisA';
+
+//! Sent to the index_server BApplication to run a content search; carries
+//! "query" (BString) and optionally "maxResults" (int32, default 100).
+//! Answered via BMessage::SendReply() with repeated "refs" (entry_ref) and
+//! "scores" (float, same order) fields, plus "searchedVolumes" (int32).
+const uint32 kMsgQuery = 'ISQu';
+
+//! Name of the analyser add-on that answers kMsgQuery (matches the add-on
+//! binary's own file name, which FileAnalyser::Name() is set from - see
+//! IndexServer::RegisterAddOn()).
+const BString kFullTextAnalyserName = "FullTextAnalyser";
 
 #endif // INDEX_SERVER_PRIVATE_H
