@@ -146,6 +146,10 @@ public:
 								const BMessage& query,
 								BMessage& reply);
 
+			//! thread safe. True if a live analysis or catch up run is
+			//! currently in progress on this volume.
+			bool				IsBusy();
+
 			void				GetSecureEntries(list_collection& collection);
 
 			bool				FindEntryRef(ino_t node, dev_t device,

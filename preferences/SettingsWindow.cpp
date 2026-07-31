@@ -24,8 +24,11 @@
 #include <MenuBar.h>
 #include <MenuField.h>
 #include <MenuItem.h>
+#include <MessageRunner.h>
+#include <Messenger.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <StringView.h>
 
 #include "IndexServerPrivate.h"
 
@@ -40,8 +43,11 @@ static const uint32 kMsgRemovePath = 'RemP';
 static const uint32 kMsgDefaults = 'Dflt';
 static const uint32 kMsgRevert = 'Rvrt';
 static const uint32 kMsgToggleAnalyser = 'TgAn';
+static const uint32 kMsgUpdateStatus = 'UpSt';
 
 static const int32 kPathColumn = 0;
+
+const bigtime_t kStatusPollInterval = 2000000; // 2s
 
 
 //! The path list; also accepts folders dropped from Tracker.
@@ -104,9 +110,13 @@ SettingsWindow::SettingsWindow()
 	BButton* revertButton = new BButton("revert", B_TRANSLATE("Revert"),
 		new BMessage(kMsgRevert));
 
+	fStatusView = new BStringView("status", "");
+	fStatusView->SetAlignment(B_ALIGN_LEFT);
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.AddGroup(B_VERTICAL, B_USE_WINDOW_SPACING)
+			.Add(fStatusView)
 			.AddGroup(B_HORIZONTAL)
 				.Add(fModeField)
 				.AddGlue()
@@ -126,11 +136,16 @@ SettingsWindow::SettingsWindow()
 		B_DIRECTORY_NODE, true);
 
 	_ReloadPathList();
+
+	_UpdateStatus();
+	fStatusRunner = new BMessageRunner(BMessenger(this),
+		new BMessage(kMsgUpdateStatus), kStatusPollInterval);
 }
 
 
 SettingsWindow::~SettingsWindow()
 {
+	delete fStatusRunner;
 	delete fFolderPanel;
 }
 
@@ -246,9 +261,37 @@ SettingsWindow::_RemoveSelectedPaths()
 
 
 void
+SettingsWindow::_UpdateStatus()
+{
+	BMessenger indexServer(kIndexServerSignature);
+	if (!indexServer.IsValid()) {
+		fStatusView->SetText(B_TRANSLATE("Server not running"));
+		return;
+	}
+
+	BMessage query(kMsgGetStatus);
+	BMessage reply;
+	if (indexServer.SendMessage(&query, &reply) != B_OK) {
+		fStatusView->SetText(B_TRANSLATE("Server not reachable"));
+		return;
+	}
+
+	bool indexing = false;
+	reply.FindBool("indexing", &indexing);
+	fStatusView->SetText(indexing
+		? B_TRANSLATE("Indexing" B_UTF8_ELLIPSIS)
+		: B_TRANSLATE("Running"));
+}
+
+
+void
 SettingsWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case kMsgUpdateStatus:
+			_UpdateStatus();
+			break;
+
 		case kMsgModeChanged:
 		{
 			int32 mode;

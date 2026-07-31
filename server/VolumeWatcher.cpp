@@ -577,6 +577,14 @@ VolumeWatcher::HandleQuery(const BString& analyserName,
 }
 
 
+bool
+VolumeWatcher::IsBusy()
+{
+	BAutolock _(this);
+	return fVolumeWorker->IsBusy() || fCatchUpManager.IsCatchingUp();
+}
+
+
 void
 VolumeWatcher::GetSecureEntries(list_collection& collection)
 {

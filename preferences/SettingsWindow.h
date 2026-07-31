@@ -18,6 +18,8 @@ class BFilePanel;
 class BMenu;
 class BMenuBar;
 class BMenuField;
+class BMessageRunner;
+class BStringView;
 class PathListView;
 
 
@@ -34,6 +36,7 @@ private:
 			void				_ReloadPathList();
 			void				_AddRefs(BMessage* message);
 			void				_RemoveSelectedPaths();
+			void				_UpdateStatus();
 
 			IndexServerSettings	fSettings;
 
@@ -41,6 +44,9 @@ private:
 			BMenu*				fAnalysersMenu;
 			PathListView*		fPathListView;
 			BFilePanel*			fFolderPanel;
+
+			BStringView*		fStatusView;
+			BMessageRunner*		fStatusRunner;
 };
 
 

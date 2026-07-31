@@ -84,6 +84,11 @@ public:
 			//! Stop all catch up threads.
 			void				Stop();
 
+			//! True if a catch up run is currently active for this volume.
+			bool				IsCatchingUp()
+									{ return fCatchUpAnalyserList.CountItems()
+										> 0; }
+
 private:
 			BVolume				fVolume;
 			IndexServerSettings*	fSettings;

@@ -96,4 +96,10 @@ const uint32 kMsgQuery = 'ISQu';
 //! IndexServer::RegisterAddOn()).
 const BString kFullTextAnalyserName = "FullTextAnalyser";
 
+//! Sent to the index_server BApplication to ask whether it's currently
+//! idle or catching up/indexing. No fields needed in the request.
+//! Answered via BMessage::SendReply() with "indexing" (bool) - true if any
+//! watched volume has a catch up or live analysis run in progress.
+const uint32 kMsgGetStatus = 'ISSt';
+
 #endif // INDEX_SERVER_PRIVATE_H

@@ -184,6 +184,22 @@ IndexServer::MessageReceived(BMessage *message)
 			break;
 		}
 
+		case kMsgGetStatus:
+		{
+			bool indexing = false;
+			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
+				if (fVolumeWatcherList.ItemAt(i)->IsBusy()) {
+					indexing = true;
+					break;
+				}
+			}
+
+			BMessage reply;
+			reply.AddBool("indexing", indexing);
+			message->SendReply(&reply);
+			break;
+		}
+
 		default:
 			BApplication::MessageReceived(message);
 	}
