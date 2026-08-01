@@ -53,6 +53,7 @@ protected:
 
 private:
 			FileAnalyser*		_FindAnalyser(const BString& name);
+			void				_EnsureMimeType(const entry_ref& ref);
 
 			int32				fStopped;
 };

@@ -12,6 +12,9 @@
 
 #include <Autolock.h>
 #include <Directory.h>
+#include <Mime.h>
+#include <Node.h>
+#include <NodeInfo.h>
 #include <NodeMonitor.h>
 #include <Path.h>
 #include <VolumeRoster.h>
@@ -160,6 +163,7 @@ void
 AnalyserDispatcher::AnalyseEntry(const entry_ref& ref)
 {
 	BAutolock _(this);
+	_EnsureMimeType(ref);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->AnalyseEntry(ref);
 }
@@ -178,8 +182,35 @@ void
 AnalyserDispatcher::MoveEntry(const entry_ref& oldRef, const entry_ref& newRef)
 {
 	BAutolock _(this);
+	_EnsureMimeType(newRef);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		fFileAnalyserList.ItemAt(i)->MoveEntry(oldRef, newRef);
+}
+
+
+// Files that never went through a native Haiku write path (checked out by
+// git, arrived over scp, ...) have no BEOS:TYPE at all, which every
+// analyser here silently treats as "nothing to do" (see issue #41).
+// update_mime_info() with B_UPDATE_MIME_INFO_NO_FORCE only sniffs a type
+// when one isn't already set, so this is a no-op for the common case of a
+// file Tracker or a native app already typed.
+void
+AnalyserDispatcher::_EnsureMimeType(const entry_ref& ref)
+{
+	BNode node(&ref);
+	if (node.InitCheck() != B_OK)
+		return;
+
+	char type[B_MIME_TYPE_LENGTH];
+	BNodeInfo nodeInfo(&node);
+	if (nodeInfo.GetType(type) == B_OK)
+		return;
+
+	BPath path(&ref);
+	if (path.InitCheck() != B_OK)
+		return;
+
+	update_mime_info(path.Path(), 0, 1, B_UPDATE_MIME_INFO_NO_FORCE);
 }
 
 
