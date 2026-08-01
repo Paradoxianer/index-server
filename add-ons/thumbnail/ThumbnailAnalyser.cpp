@@ -1,0 +1,225 @@
+/*
+ * Copyright 2026, Haiku.
+ * Distributed under the terms of the MIT License.
+ *
+ * Authors:
+ *		Matthias Lindner
+ */
+#include "ThumbnailAnalyser.h"
+
+#include <new>
+#include <string.h>
+
+#include <Bitmap.h>
+#include <BitmapStream.h>
+#include <DataIO.h>
+#include <File.h>
+#include <Mime.h>
+#include <Node.h>
+#include <NodeInfo.h>
+#include <Path.h>
+#include <TranslatorRoster.h>
+#include <View.h>
+
+#include "RunWithTimeout.h"
+
+
+// A malformed or pathological image must not stall the whole VolumeWorker
+// thread over decoding/scaling it.
+const bigtime_t kThumbnailTimeout = 15 * 1000000;
+
+// Larger than Tracker's own icon sizes so a future viewer has some room,
+// small enough to stay cheap to generate and store per file.
+const int32 kThumbnailSize = 128;
+
+// Skip anything above this before even trying to decode it - a huge image
+// dominating the queue is exactly the kind of thing kMaxIndexableFileSize
+// already guards against for text (see FullTextAnalyser.h).
+const off_t kMaxThumbnailSourceSize = 32 * 1024 * 1024;
+
+// No established Haiku convention for a per-file thumbnail attribute was
+// found (see issue discussion); namespaced like the EXIF analyser's
+// "EXIF:*" attributes to make the origin obvious.
+static const char* const kThumbnailAttribute = "Thumbnail:PNG";
+
+
+namespace {
+
+
+struct thumbnail_cookie {
+	BString		path;
+	bool		hasThumbnail;
+	BMallocIO	png;
+};
+
+
+status_t
+do_create_thumbnail(void* data)
+{
+	thumbnail_cookie* cookie = (thumbnail_cookie*)data;
+
+	BFile file(cookie->path.String(), B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return B_OK;
+
+	BBitmapStream sourceStream;
+	if (BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
+			&sourceStream, B_TRANSLATOR_BITMAP) != B_OK) {
+		return B_OK;
+	}
+
+	BBitmap* sourceBitmap = NULL;
+	if (sourceStream.DetachBitmap(&sourceBitmap) != B_OK
+		|| sourceBitmap == NULL) {
+		return B_OK;
+	}
+
+	BRect sourceBounds = sourceBitmap->Bounds();
+	float sourceWidth = sourceBounds.Width() + 1;
+	float sourceHeight = sourceBounds.Height() + 1;
+	if (sourceWidth <= 0 || sourceHeight <= 0) {
+		delete sourceBitmap;
+		return B_OK;
+	}
+
+	float longSide = sourceWidth > sourceHeight ? sourceWidth : sourceHeight;
+	float scale = kThumbnailSize / longSide;
+	if (scale > 1)
+		scale = 1; // never upscale a smaller image
+	int32 destWidth = (int32)(sourceWidth * scale);
+	int32 destHeight = (int32)(sourceHeight * scale);
+	if (destWidth < 1)
+		destWidth = 1;
+	if (destHeight < 1)
+		destHeight = 1;
+
+	BBitmap* destBitmap = new(std::nothrow) BBitmap(
+		BRect(0, 0, destWidth - 1, destHeight - 1), B_RGBA32, true);
+	if (destBitmap == NULL || destBitmap->InitCheck() != B_OK) {
+		delete sourceBitmap;
+		delete destBitmap;
+		return B_OK;
+	}
+
+	BView* view = new(std::nothrow) BView(destBitmap->Bounds(), "thumb",
+		B_FOLLOW_NONE, 0);
+	if (view == NULL) {
+		delete sourceBitmap;
+		delete destBitmap;
+		return B_OK;
+	}
+	destBitmap->AddChild(view);
+	destBitmap->Lock();
+	view->DrawBitmap(sourceBitmap, sourceBounds, destBitmap->Bounds());
+	view->Sync();
+	destBitmap->Unlock();
+	delete sourceBitmap;
+
+	// BBitmapStream(bitmap) takes ownership of destBitmap and deletes it in
+	// its own destructor - nothing else here must delete it afterwards.
+	BBitmapStream destStream(destBitmap);
+	status_t status = BTranslatorRoster::Default()->Translate(&destStream,
+		NULL, NULL, &cookie->png, B_PNG_FORMAT);
+
+	cookie->hasThumbnail = status == B_OK && cookie->png.BufferLength() > 0;
+	return B_OK;
+}
+
+
+void
+cleanup_thumbnail(void* data)
+{
+	delete (thumbnail_cookie*)data;
+}
+
+
+}	// namespace
+
+
+ThumbnailAnalyser::ThumbnailAnalyser(BString name, const BVolume& volume)
+	:
+	FileAnalyser(name, volume)
+{
+}
+
+
+status_t
+ThumbnailAnalyser::InitCheck()
+{
+	return B_OK;
+}
+
+
+bool
+ThumbnailAnalyser::_IsSupportedImage(const entry_ref& ref)
+{
+	BNode node(&ref);
+	if (node.InitCheck() != B_OK)
+		return false;
+
+	BNodeInfo nodeInfo(&node);
+	char mimeType[B_MIME_TYPE_LENGTH];
+	if (nodeInfo.GetType(mimeType) != B_OK)
+		return false;
+
+	return strncmp(mimeType, "image/", 6) == 0;
+}
+
+
+void
+ThumbnailAnalyser::AnalyseEntry(const entry_ref& ref)
+{
+	if (!_IsSupportedImage(ref))
+		return;
+
+	BFile file(&ref, B_READ_ONLY);
+	off_t size;
+	if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
+		|| size > kMaxThumbnailSourceSize) {
+		return;
+	}
+
+	BPath path(&ref);
+	thumbnail_cookie* cookie = new(std::nothrow) thumbnail_cookie;
+	if (cookie == NULL)
+		return;
+	cookie->path = path.Path();
+	cookie->hasThumbnail = false;
+
+	status_t status = run_with_timeout(do_create_thumbnail, cookie,
+		cleanup_thumbnail, kThumbnailTimeout);
+	if (status == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; must not
+		// touch it here.
+		return;
+	}
+	if (status != B_OK || !cookie->hasThumbnail) {
+		delete cookie;
+		return;
+	}
+
+	file.WriteAttr(kThumbnailAttribute, B_RAW_TYPE, 0, cookie->png.Buffer(),
+		cookie->png.BufferLength());
+	delete cookie;
+}
+
+
+ThumbnailAddOn::ThumbnailAddOn(image_id id, const char* name)
+	:
+	IndexServerAddOn(id, name)
+{
+}
+
+
+FileAnalyser*
+ThumbnailAddOn::CreateFileAnalyser(const BVolume& volume)
+{
+	return new (std::nothrow) ThumbnailAnalyser(Name(), volume);
+}
+
+
+extern "C" IndexServerAddOn* (instantiate_index_server_addon)(image_id id,
+	const char* name)
+{
+	return new (std::nothrow) ThumbnailAddOn(id, name);
+}
