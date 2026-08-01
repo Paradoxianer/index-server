@@ -10,6 +10,7 @@
 
 #include "IndexServer.h"
 
+#include <Messenger.h>
 #include <Path.h>
 #include <String.h>
 
@@ -197,6 +198,22 @@ IndexServer::MessageReceived(BMessage *message)
 			BMessage reply;
 			reply.AddBool("indexing", indexing);
 			message->SendReply(&reply);
+			break;
+		}
+
+		case kMsgRegisterProgressObserver:
+		{
+			BMessenger observer;
+			if (message->FindMessenger("observer", &observer) == B_OK)
+				fSettings.RegisterProgressObserver(observer);
+			break;
+		}
+
+		case kMsgUnregisterProgressObserver:
+		{
+			BMessenger observer;
+			if (message->FindMessenger("observer", &observer) == B_OK)
+				fSettings.UnregisterProgressObserver(observer);
 			break;
 		}
 

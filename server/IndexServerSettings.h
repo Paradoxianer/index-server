@@ -13,6 +13,7 @@
 
 #include <Handler.h>
 #include <Locker.h>
+#include <Messenger.h>
 #include <Node.h>
 #include <Path.h>
 #include <String.h>
@@ -47,6 +48,15 @@ public:
 
 			//! thread safe; true unless explicitly disabled
 			bool				IsAnalyserEnabled(const BString& name) const;
+
+			//! thread safe
+			void				RegisterProgressObserver(
+									const BMessenger& observer);
+			void				UnregisterProgressObserver(
+									const BMessenger& observer);
+			//! Pushes \a message to every registered observer, dropping any
+			//! target that's no longer reachable (e.g. a closed window).
+			void				NotifyProgressObservers(BMessage& message);
 
 			// The accessors below are for the settings preflet, which runs
 			// as its own instance in its own team (never sharing an
@@ -86,6 +96,8 @@ private:
 
 			node_ref			fSettingsNodeRef;
 			bool				fWatchingSettings;
+
+			std::vector<BMessenger>	fProgressObservers;
 };
 
 

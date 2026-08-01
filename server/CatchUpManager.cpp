@@ -141,13 +141,11 @@ CatchUpAnalyser::_CatchUp()
 	// CatchUpManager::CatchUp()) would permanently block every later catch
 	// up for this volume, including any pending one.
 
-	// A routine catch up after a short restart is over in a blink; only a
-	// backlog large enough to actually take a while is worth telling the
-	// user about (see issue #34).
-	const size_t kNotifyThreshold = 200;
-	IndexProgressNotifier* notifier = NULL;
-	if (entryList.size() >= kNotifyThreshold)
-		notifier = _CreateProgressNotifier();
+	// Always created (a Settings window watching live progress wants an
+	// update whether the backlog is big or small); IndexProgressNotifier
+	// itself decides whether a run is big enough to also pop up an OS
+	// notification (see its own kNotifyThreshold).
+	IndexProgressNotifier* notifier = _CreateProgressNotifier();
 
 	for (uint32 i = 0; i < entryList.size(); i++) {
 		if (Stopped()) {
@@ -158,11 +156,14 @@ CatchUpAnalyser::_CatchUp()
 			delete notifier;
 			return;
 		}
-		if (i % 100 == 0) {
+		if (i % 100 == 0)
 			printf("Catch up: %i/%i\n", (int)i,(int)entryList.size());
-			if (notifier != NULL)
-				notifier->Progress(i, entryList.size());
-		}
+		// Progress() throttles itself to at most once a second (always
+		// letting the first/last update through), so calling it every
+		// iteration is what lets a quick catch up (fewer than 100 entries,
+		// otherwise never hitting the printf's own gate above) still push
+		// at least a start and an end update to observers.
+		notifier->Progress(i, entryList.size(), BPath(&entryList[i]).Path());
 		AnalyseEntry(entryList[i]);
 		snooze(kCatchUpPaceInterval);
 		if (i % 500 == 0 && i > 0)
@@ -170,10 +171,8 @@ CatchUpAnalyser::_CatchUp()
 	}
 	LastEntry();
 
-	if (notifier != NULL) {
-		notifier->Done(entryList.size());
-		delete notifier;
-	}
+	notifier->Done(entryList.size());
+	delete notifier;
 
 	_WriteSyncSatus(fEnd * kSecond);
 	printf(("Catched up.\n"));
@@ -213,7 +212,7 @@ CatchUpAnalyser::_CreateProgressNotifier()
 	title.SetToFormat(B_TRANSLATE("Indexing %s (%s)"), volumeName,
 		analyserNames.String());
 
-	return new IndexProgressNotifier(messageID, title);
+	return new IndexProgressNotifier(messageID, title, volumeName, fSettings);
 }
 
 
@@ -253,9 +252,18 @@ CatchUpManager::MessageReceived(BMessage *message)
 	CatchUpAnalyser* analyser = NULL;
 	switch (message->what) {
 		case kCatchUpDone:
-			message->GetPointer("Analyser", &analyser);
+			// GetPointer(name, defaultValue) is the "return with a
+			// fallback" convenience overload, not FindPointer's
+			// status_t/out-param pair - passing &analyser here filled the
+			// unused defaultValue parameter and silently discarded the
+			// actual return, leaving analyser NULL forever. That left a
+			// finished CatchUpAnalyser stuck in the list, so every later
+			// CatchUp() (e.g. a rescan) saw "already running" and just
+			// re-marked itself pending, never actually running again.
+			message->FindPointer("Analyser", (void**)&analyser);
 			fCatchUpAnalyserList.RemoveItem(analyser);
-			analyser->PostMessage(B_QUIT_REQUESTED);
+			if (analyser != NULL)
+				analyser->PostMessage(B_QUIT_REQUESTED);
 
 			if (fCatchUpPending) {
 				// Something registered or asked for a rescan while this run

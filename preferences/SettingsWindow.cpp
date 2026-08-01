@@ -28,6 +28,7 @@
 #include <Messenger.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <StatusBar.h>
 #include <StringView.h>
 
 #include "IndexServerPrivate.h"
@@ -113,10 +114,15 @@ SettingsWindow::SettingsWindow()
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
 
+	fProgressBar = new BStatusBar("progress");
+	fProgressBar->SetMaxValue(100.0f);
+	fProgressBar->Hide();
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.AddGroup(B_VERTICAL, B_USE_WINDOW_SPACING)
 			.Add(fStatusView)
+			.Add(fProgressBar)
 			.AddGroup(B_HORIZONTAL)
 				.Add(fModeField)
 				.AddGlue()
@@ -140,11 +146,19 @@ SettingsWindow::SettingsWindow()
 	_UpdateStatus();
 	fStatusRunner = new BMessageRunner(BMessenger(this),
 		new BMessage(kMsgUpdateStatus), kStatusPollInterval);
+
+	BMessage registerObserver(kMsgRegisterProgressObserver);
+	registerObserver.AddMessenger("observer", BMessenger(this));
+	BMessenger(kIndexServerSignature).SendMessage(&registerObserver);
 }
 
 
 SettingsWindow::~SettingsWindow()
 {
+	BMessage unregisterObserver(kMsgUnregisterProgressObserver);
+	unregisterObserver.AddMessenger("observer", BMessenger(this));
+	BMessenger(kIndexServerSignature).SendMessage(&unregisterObserver);
+
 	delete fStatusRunner;
 	delete fFolderPanel;
 }
@@ -285,11 +299,43 @@ SettingsWindow::_UpdateStatus()
 
 
 void
+SettingsWindow::_HandleProgress(BMessage* message)
+{
+	int32 current = 0;
+	int32 total = 0;
+	message->FindInt32("current", &current);
+	message->FindInt32("total", &total);
+	if (total <= 0)
+		return;
+
+	if (current >= total) {
+		fProgressBar->Hide();
+		return;
+	}
+
+	BString path;
+	message->FindString("path", &path);
+
+	if (fProgressBar->IsHidden())
+		fProgressBar->Show();
+
+	BString trailing;
+	trailing.SetToFormat("%ld / %ld", (long)current, (long)total);
+	fProgressBar->SetTo(100.0f * current / total, path.String(),
+		trailing.String());
+}
+
+
+void
 SettingsWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case kMsgUpdateStatus:
 			_UpdateStatus();
+			break;
+
+		case kMsgIndexProgress:
+			_HandleProgress(message);
 			break;
 
 		case kMsgModeChanged:

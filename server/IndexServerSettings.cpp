@@ -243,6 +243,46 @@ IndexServerSettings::IsAnalyserEnabled(const BString& name) const
 }
 
 
+void
+IndexServerSettings::RegisterProgressObserver(const BMessenger& observer)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fProgressObservers.size(); i++) {
+		if (fProgressObservers[i] == observer)
+			return;
+	}
+	fProgressObservers.push_back(observer);
+	STRACE("registered progress observer, count now %d\n",
+		(int)fProgressObservers.size());
+}
+
+
+void
+IndexServerSettings::UnregisterProgressObserver(const BMessenger& observer)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fProgressObservers.size(); i++) {
+		if (fProgressObservers[i] == observer) {
+			fProgressObservers.erase(fProgressObservers.begin() + i);
+			return;
+		}
+	}
+}
+
+
+void
+IndexServerSettings::NotifyProgressObservers(BMessage& message)
+{
+	BAutolock lock(fLock);
+	for (size_t i = 0; i < fProgressObservers.size(); ) {
+		if (fProgressObservers[i].SendMessage(&message) != B_OK)
+			fProgressObservers.erase(fProgressObservers.begin() + i);
+		else
+			i++;
+	}
+}
+
+
 settings_mode
 IndexServerSettings::Mode() const
 {

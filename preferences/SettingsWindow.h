@@ -19,6 +19,7 @@ class BMenu;
 class BMenuBar;
 class BMenuField;
 class BMessageRunner;
+class BStatusBar;
 class BStringView;
 class PathListView;
 
@@ -37,6 +38,7 @@ private:
 			void				_AddRefs(BMessage* message);
 			void				_RemoveSelectedPaths();
 			void				_UpdateStatus();
+			void				_HandleProgress(BMessage* message);
 
 			IndexServerSettings	fSettings;
 
@@ -47,6 +49,7 @@ private:
 
 			BStringView*		fStatusView;
 			BMessageRunner*		fStatusRunner;
+			BStatusBar*			fProgressBar;
 };
 
 

@@ -11,7 +11,11 @@
 #include <string.h>
 
 #include <Catalog.h>
+#include <Message.h>
 #include <Notification.h>
+
+#include "IndexServerPrivate.h"
+#include "IndexServerSettings.h"
 
 
 #undef B_TRANSLATION_CONTEXT
@@ -21,6 +25,12 @@
 // Update at most once a second - once per file would make the notification
 // itself a source of load during a large catch up.
 static const bigtime_t kMinNotifyInterval = 1000000;
+// A routine catch up after a short restart is over in a blink; only a
+// backlog large enough to actually take a while is worth popping up an OS
+// notification for (see issue #34). Observers (e.g. the Settings window)
+// still get every update regardless - a live progress display has no
+// "is this worth interrupting the user for" concern the way a popup does.
+static const int32 kNotifyThreshold = 200;
 static const char* const kNotificationGroup = "Index Server";
 // Clicking the notification opens the settings preflet; it has no status
 // view yet (see issue #34's secondary part), but this is forward compatible
@@ -30,17 +40,21 @@ static const char* const kSettingsAppSignature =
 
 
 IndexProgressNotifier::IndexProgressNotifier(const BString& messageID,
-	const BString& title)
+	const BString& title, const BString& volumeName,
+	IndexServerSettings* settings)
 	:
 	fMessageID(messageID),
 	fTitle(title),
+	fVolumeName(volumeName),
+	fSettings(settings),
 	fLastSent(0)
 {
 }
 
 
 void
-IndexProgressNotifier::Progress(int32 current, int32 total)
+IndexProgressNotifier::Progress(int32 current, int32 total,
+	const BString& currentPath)
 {
 	if (total <= 0)
 		return;
@@ -51,6 +65,11 @@ IndexProgressNotifier::Progress(int32 current, int32 total)
 	if (!isFirst && !isLast && now - fLastSent < kMinNotifyInterval)
 		return;
 	fLastSent = now;
+
+	_NotifyObservers(current, total, currentPath);
+
+	if (total < kNotifyThreshold)
+		return;
 
 	BNotification notification(B_PROGRESS_NOTIFICATION);
 	notification.SetGroup(kNotificationGroup);
@@ -76,6 +95,11 @@ IndexProgressNotifier::Progress(int32 current, int32 total)
 void
 IndexProgressNotifier::Done(int32 count)
 {
+	_NotifyObservers(count, count, BString());
+
+	if (count < kNotifyThreshold)
+		return;
+
 	BNotification notification(B_INFORMATION_NOTIFICATION);
 	notification.SetGroup(kNotificationGroup);
 	notification.SetTitle(fTitle);
@@ -89,4 +113,20 @@ IndexProgressNotifier::Done(int32 count)
 	status_t status = notification.Send(5000000);
 	if (status != B_OK)
 		printf("IndexProgressNotifier: Send() failed: %s\n", strerror(status));
+}
+
+
+void
+IndexProgressNotifier::_NotifyObservers(int32 current, int32 total,
+	const BString& currentPath)
+{
+	if (fSettings == NULL)
+		return;
+
+	BMessage progress(kMsgIndexProgress);
+	progress.AddInt32("current", current);
+	progress.AddInt32("total", total);
+	progress.AddString("volume", fVolumeName);
+	progress.AddString("path", currentPath);
+	fSettings->NotifyProgressObservers(progress);
 }

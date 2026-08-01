@@ -102,4 +102,23 @@ const BString kFullTextAnalyserName = "FullTextAnalyser";
 //! watched volume has a catch up or live analysis run in progress.
 const uint32 kMsgGetStatus = 'ISSt';
 
+//! Sent to the index_server BApplication to subscribe to live catch up
+//! progress pushes (see kMsgIndexProgress below); carries "observer"
+//! (BMessenger) - the specific handler to push updates to, not just the
+//! sending team's default one. Registering the same target twice is a
+//! no-op (deduped via BMessenger::operator==).
+const uint32 kMsgRegisterProgressObserver = 'ISRO';
+
+//! Unregisters a target previously registered with
+//! kMsgRegisterProgressObserver (same "observer" field) - send when a
+//! window with a progress display closes, so the server stops wasting a
+//! SendMessage() on a dead target every update.
+const uint32 kMsgUnregisterProgressObserver = 'ISUO';
+
+//! Pushed by index_server to every registered progress observer during a
+//! catch up run. Carries "current" (int32), "total" (int32), "volume"
+//! (BString, human-readable volume name) and "path" (BString, the file
+//! just analysed - empty for the final "done" push, where current==total).
+const uint32 kMsgIndexProgress = 'ISPr';
+
 #endif // INDEX_SERVER_PRIVATE_H
