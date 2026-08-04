@@ -42,6 +42,12 @@ const off_t kMaxThumbnailSourceSize = 32 * 1024 * 1024;
 // "EXIF:*" attributes to make the origin obvious.
 static const char* const kThumbnailAttribute = "Thumbnail:PNG";
 
+// Haiku's own vector icon format isn't typed "image/*" (HVIFTranslator
+// registers it as this application/* type - see HVIFTranslator.cpp), even
+// though it translates to B_TRANSLATOR_BITMAP just like any other image
+// format here.
+static const char* const kHVIFMimeType = "application/x-vnd.Haiku-icon";
+
 
 namespace {
 
@@ -162,7 +168,8 @@ ThumbnailAnalyser::_IsSupportedImage(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	return strncmp(mimeType, "image/", 6) == 0;
+	return strncmp(mimeType, "image/", 6) == 0
+		|| strcmp(mimeType, kHVIFMimeType) == 0;
 }
 
 
