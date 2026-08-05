@@ -43,6 +43,7 @@ WatchNameHandler::EntryCreated(const char *name, ino_t directory, dev_t device,
 	entry_ref ref(device, directory, name);
 	if (fVolumeWatcher->_IsExcluded(ref))
 		return;
+	fVolumeWatcher->_RememberEntryRef(ref, node);
 	fVolumeWatcher->fCreatedList.CurrentList()->push_back(ref);
 	fVolumeWatcher->_NewEntriesArrived();
 }
@@ -55,6 +56,7 @@ WatchNameHandler::EntryRemoved(const char *name, ino_t directory, dev_t device,
 	entry_ref ref(device, directory, name);
 	if (fVolumeWatcher->_IsExcluded(ref))
 		return;
+	fVolumeWatcher->_ForgetEntryRef(node, device);
 	fVolumeWatcher->fDeleteList.CurrentList()->push_back(ref);
 	fVolumeWatcher->_NewEntriesArrived();
 }
@@ -73,6 +75,7 @@ WatchNameHandler::EntryMoved(const char *name, const char *fromName,
 	if (fVolumeWatcher->_IsExcluded(ref) || fVolumeWatcher->_IsExcluded(refFrom))
 		return;
 
+	fVolumeWatcher->_RememberEntryRef(ref, node);
 	fVolumeWatcher->fMovedList.CurrentList()->push_back(ref);
 	fVolumeWatcher->fMovedFromList.CurrentList()->push_back(refFrom);
 	fVolumeWatcher->_NewEntriesArrived();
@@ -95,23 +98,23 @@ WatchNameHandler::MessageReceived(BMessage* msg)
 		if (msg->FindInt32("opcode", &opcode) == B_OK) {
 			switch (opcode) {
 			case B_STAT_CHANGED: {
-				BString name;
-				entry_ref ref;
-				ino_t node;
 				int32 statFields;
 				msg->FindInt32("fields", &statFields);
 				if ((statFields & B_STAT_MODIFICATION_TIME) == 0)
 					break;
-				msg->FindInt32("device", &ref.device);
+
+				dev_t device;
+				ino_t node;
+				msg->FindInt32("device", &device);
 				msg->FindInt64("node", &node);
-				msg->FindInt64("directory", &ref.directory);
-				msg->FindString("name", &name);
 
-				ref.set_name(name);
-
-				BPath path(&ref);
-				printf("stat changed node %i name %s %s\n", (int)node,
-					name.String(), path.Path());
+				// B_STAT_CHANGED carries only device+node, never a name -
+				// see #46. FindEntryRef() resolves it from entries seen
+				// via EntryCreated()/EntryMoved() since watching started;
+				// nodes never seen that way don't resolve and are dropped.
+				entry_ref ref;
+				if (!fVolumeWatcher->FindEntryRef(node, device, ref))
+					break;
 
 				if (fVolumeWatcher->_IsExcluded(ref))
 					break;
@@ -631,7 +634,28 @@ VolumeWatcher::GetSecureEntries(list_collection& collection)
 bool
 VolumeWatcher::FindEntryRef(ino_t node, dev_t device, entry_ref& entry)
 {
-	return false;
+	BAutolock _(this);
+	NodeRefMap::iterator it = fEntryRefMap.find(node_ref(device, node));
+	if (it == fEntryRefMap.end())
+		return false;
+	entry = it->second;
+	return true;
+}
+
+
+void
+VolumeWatcher::_RememberEntryRef(const entry_ref& ref, ino_t node)
+{
+	BAutolock _(this);
+	fEntryRefMap[node_ref(ref.device, node)] = ref;
+}
+
+
+void
+VolumeWatcher::_ForgetEntryRef(ino_t node, dev_t device)
+{
+	BAutolock _(this);
+	fEntryRefMap.erase(node_ref(device, node));
 }
 
 

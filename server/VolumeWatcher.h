@@ -9,10 +9,12 @@
 #define VOLUME_WATCHER_H
 
 
+#include <map>
 #include <vector>
 
 #include <Debug.h>
 #include <Handler.h>
+#include <Node.h>
 #include <NodeMonitorHandler.h>
 #include <Volume.h>
 
@@ -152,6 +154,14 @@ public:
 
 			void				GetSecureEntries(list_collection& collection);
 
+			//! thread safe. Resolves a bare node_ref (all a B_STAT_CHANGED
+			//! notification carries) back to the entry_ref it belongs to,
+			//! from entries seen via EntryCreated()/EntryMoved() since
+			//! watching started. There is no cheap way to ask BFS for a
+			//! node's name directly (a node can have zero or several
+			//! names), so a node never seen this way - e.g. edited for the
+			//! first time since this server started, without having been
+			//! created or renamed - won't resolve; see #46.
 			bool				FindEntryRef(ino_t node, dev_t device,
 									entry_ref& entry);
 
@@ -162,6 +172,12 @@ private:
 
 			//! true if ref should not be handed to the AnalyserDispatcher
 			bool				_IsExcluded(const entry_ref& ref) const;
+
+			//! thread safe
+			void				_RememberEntryRef(const entry_ref& ref,
+									ino_t node);
+			//! thread safe
+			void				_ForgetEntryRef(ino_t node, dev_t device);
 
 			bool				fWatching;
 
@@ -177,6 +193,9 @@ private:
 
 			VolumeWorker*		fVolumeWorker;
 			CatchUpManager		fCatchUpManager;
+
+			typedef std::map<node_ref, entry_ref> NodeRefMap;
+			NodeRefMap			fEntryRefMap;
 };
 
 
