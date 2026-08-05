@@ -23,6 +23,16 @@
 #include "IndexServerPrivate.h"
 
 
+#define DEBUG_SEARCH_WINDOW
+#ifdef DEBUG_SEARCH_WINDOW
+#include <stdio.h>
+#include <string.h>
+#	define STRACE(x...) printf("SearchWindow: " x)
+#else
+#	define STRACE(x...) ;
+#endif
+
+
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "SearchWindow"
 
@@ -84,12 +94,16 @@ SearchWindow::_RunSearch()
 	}
 
 	BString queryString(fQueryControl->Text());
+	STRACE("query text = \"%s\" (length %ld)\n", queryString.String(),
+		(long)queryString.Length());
 	if (queryString.Length() == 0) {
 		fStatusView->SetText(B_TRANSLATE("Type something to search for."));
 		return;
 	}
 
 	BMessenger indexServer(kIndexServerSignature);
+	STRACE("BMessenger(%s) IsValid=%s\n", kIndexServerSignature.String(),
+		indexServer.IsValid() ? "true" : "false");
 	if (!indexServer.IsValid()) {
 		fStatusView->SetText(B_TRANSLATE("index_server is not running."));
 		return;
@@ -99,7 +113,9 @@ SearchWindow::_RunSearch()
 	query.AddString("query", queryString);
 
 	BMessage reply;
-	if (indexServer.SendMessage(&query, &reply) != B_OK) {
+	status_t sendStatus = indexServer.SendMessage(&query, &reply);
+	STRACE("SendMessage status = %s\n", strerror(sendStatus));
+	if (sendStatus != B_OK) {
 		fStatusView->SetText(B_TRANSLATE("Could not reach index_server."));
 		return;
 	}
@@ -111,6 +127,7 @@ SearchWindow::_RunSearch()
 		reply.FindFloat("scores", i, &score);
 
 		BPath path(&ref);
+		STRACE("result %ld: %s (score %.3f)\n", (long)i, path.Path(), score);
 		BRow* row = new BRow();
 		row->SetField(new BStringField(path.Path()), kPathColumn);
 		BString scoreText;
@@ -122,6 +139,8 @@ SearchWindow::_RunSearch()
 
 	int32 searchedVolumes = 0;
 	reply.FindInt32("searchedVolumes", &searchedVolumes);
+	STRACE("count=%ld searchedVolumes=%ld\n", (long)count,
+		(long)searchedVolumes);
 
 	BString status;
 	if (searchedVolumes == 0) {

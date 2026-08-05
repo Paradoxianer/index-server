@@ -5,6 +5,8 @@
  * Authors:
  *		Matthias Lindner
  */
+#include <stdio.h>
+
 #include <Application.h>
 
 #include "SearchWindow.h"
@@ -31,6 +33,11 @@ IndexSearchApp::IndexSearchApp()
 int
 main()
 {
+	// Without this, stdout is fully buffered once redirected to a file
+	// (not line-buffered like a terminal), so debug output in
+	// SearchWindow.cpp would only appear once the app quits.
+	setvbuf(stdout, NULL, _IOLBF, 0);
+
 	IndexSearchApp app;
 	app.Run();
 	return 0;
