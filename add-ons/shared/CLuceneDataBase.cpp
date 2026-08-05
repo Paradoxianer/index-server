@@ -310,6 +310,16 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 IndexWriter*
 CLuceneWriteDataBase::_OpenIndexWriter()
 {
+	// sCLuceneLock already guarantees no other thread of this process is
+	// touching this directory here, and this process is the only writer
+	// this index ever has - so a lock found here can only be stale, left
+	// behind by a previous instance that didn't exit cleanly (crash, kill).
+	// Left alone, such a lock blocks every future write forever.
+	if (IndexReader::isLocked(fDataBasePath.Path())) {
+		STRACE("stale write lock found, clearing %s\n", fDataBasePath.Path());
+		IndexReader::unlock(fDataBasePath.Path());
+	}
+
 	IndexWriter* writer = NULL;
 	for (int i = 0; i < kCluceneTries; i++) {
 		try {
@@ -422,12 +432,35 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 	if (cookie == NULL)
 		return false;
 	cookie->source = new(std::nothrow) BFile(path.Path(), B_READ_ONLY);
-	cookie->destination = new(std::nothrow) BFile(fTempPath.Path(),
+	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
+		STRACE("Can't open inFile for %s\n", path.Path());
+		cleanup_translate(cookie);
+		return false;
+	}
+
+	// Unique per document rather than the single fTempPath shared across
+	// the whole batch - reusing one path meant the *next* document's
+	// translate() could truncate/overwrite this document's temp file
+	// before its FileReader (opened further down, consumed lazily by
+	// addDocument() below) had actually been read, silently indexing it
+	// with empty content. The node ref is already unique and available
+	// without adding a counter to track.
+	node_ref nodeRef;
+	if (cookie->source->GetNodeRef(&nodeRef) != B_OK) {
+		cleanup_translate(cookie);
+		return false;
+	}
+	BPath tempPath(fTempPath.Path());
+	BString tempName;
+	tempName.SetToFormat("temp_file_%" B_PRId64, (int64)nodeRef.node);
+	tempPath.GetParent(&tempPath);
+	tempPath.Append(tempName.String());
+
+	cookie->destination = new(std::nothrow) BFile(tempPath.Path(),
 		B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
-	if (cookie->source == NULL || cookie->destination == NULL
-		|| cookie->source->InitCheck() != B_OK
+	if (cookie->destination == NULL
 		|| cookie->destination->InitCheck() != B_OK) {
-		STRACE("Can't open inFile/outFile for %s\n", path.Path());
+		STRACE("Can't open outFile for %s\n", path.Path());
 		cleanup_translate(cookie);
 		return false;
 	}
@@ -436,34 +469,48 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 		cleanup_translate, kTranslateTimeout);
 	if (translateStatus == B_TIMED_OUT) {
 		// cookie now belongs to the still-running helper thread; must not
-		// touch it (or fTempPath, which it may still be writing to) here.
+		// touch it (or tempPath, which it may still be writing to) here.
 		return false;
 	}
 	cleanup_translate(cookie);
-	if (translateStatus != B_OK)
+	if (translateStatus != B_OK) {
+		remove(tempPath.Path());
 		return false;
+	}
 
-	FileReader* fileReader = new FileReader(fTempPath.Path(), "UTF-8");
 	wchar_t* wPath = to_wchar(path.Path());
-	if (wPath == NULL)
+	if (wPath == NULL) {
+		remove(tempPath.Path());
 		return false;
-
-	Document *document = new Document;
-	Field contentField(kContentsField, fileReader,
-		Field::STORE_NO | Field::INDEX_TOKENIZED);
-	document->add(contentField);
-	Field pathField(kPathField, wPath,
-		Field::STORE_YES | Field::INDEX_UNTOKENIZED);
-	document->add(pathField);
+	}
 
 	bool status = true;
 	for (int i = 0; i < kCluceneTries; i++) {
+		// A fresh Document/Field/FileReader every attempt - addDocument()
+		// throwing partway through may already have consumed some or all
+		// of a previous attempt's reader, so retrying with the same one
+		// risks indexing empty/truncated content instead of actually
+		// retrying. Document::add(Field&) stores the field by address and
+		// deletes it from Document's own destructor - not documented, but
+		// confirmed the hard way (a real crash) when these were stack
+		// allocated - so both fields must be heap allocated here.
+		Document* document = new Document;
+		FileReader* fileReader = new FileReader(tempPath.Path(), "UTF-8");
+		Field* contentField = new Field(kContentsField, fileReader,
+			Field::STORE_NO | Field::INDEX_TOKENIZED);
+		document->add(*contentField);
+		Field* pathField = new Field(kPathField, wPath,
+			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
+		document->add(*pathField);
+
 		try {
 			fIndexWriter->addDocument(document);
 			STRACE("document added, retries: %i\n", i);
+			delete document;
 			break;
 		} catch (CLuceneError &error) {
 			STRACE("CLuceneError addDocument %s\n", error.what());
+			delete document;
 			fIndexWriter->close();
 			delete fIndexWriter;
 			fIndexWriter = _OpenIndexWriter();
@@ -474,8 +521,7 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 		}
 	}
 
-	if (!status)
-		delete document;
 	delete[] wPath;
+	remove(tempPath.Path());
 	return status;
 }
