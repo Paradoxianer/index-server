@@ -67,6 +67,9 @@ private:
 									IndexReader* reader);
 
 			bool				_IndexDocument(const entry_ref& ref);
+			bool				_IsPlainText(const entry_ref& ref);
+			bool				_AddDocumentFromFile(const char* contentPath,
+									const wchar_t* wPath);
 
 			BPath				fDataBasePath;
 

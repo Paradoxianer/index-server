@@ -8,7 +8,10 @@
 #include "FullTextAnalyser.h"
 
 #include <new>
+#include <string.h>
 
+#include <Node.h>
+#include <NodeInfo.h>
 #include <String.h>
 #include <TranslatorFormats.h>
 #include <TranslatorRoster.h>
@@ -174,6 +177,23 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
 			|| size > kMaxIndexableFileSize)
 			return false;
+	}
+
+	// Plain text is always indexable content on its own - no translator can
+	// even produce B_TRANSLATOR_TEXT from it, so asking BTranslatorRoster to
+	// Identify() it here would only probe every registered translator (every
+	// image codec included) for nothing. See the same reasoning in
+	// CLuceneWriteDataBase::_IndexDocument(), which is what actually reads
+	// this content - one of those translators corrupted heap memory when fed
+	// a source file this way (see #47).
+	{
+		BNode node(&ref);
+		char mimeType[B_MIME_TYPE_LENGTH];
+		BNodeInfo nodeInfo(&node);
+		if (node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
+			&& strncmp(mimeType, "text/", 5) == 0) {
+			return true;
+		}
 	}
 
 	identify_cookie* cookie = new(std::nothrow) identify_cookie;

@@ -15,6 +15,8 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <Node.h>
+#include <NodeInfo.h>
 #include <TranslatorRoster.h>
 
 #include "RunWithTimeout.h"
@@ -424,9 +426,86 @@ CLuceneWriteDataBase::_RemoveDocument(wchar_t* wPath, IndexReader* reader)
 
 
 bool
+CLuceneWriteDataBase::_IsPlainText(const entry_ref& ref)
+{
+	BNode node(&ref);
+	if (node.InitCheck() != B_OK)
+		return false;
+
+	char mimeType[B_MIME_TYPE_LENGTH];
+	BNodeInfo nodeInfo(&node);
+	if (nodeInfo.GetType(mimeType) != B_OK)
+		return false;
+
+	return strncmp(mimeType, "text/", 5) == 0;
+}
+
+
+bool
+CLuceneWriteDataBase::_AddDocumentFromFile(const char* contentPath,
+	const wchar_t* wPath)
+{
+	bool status = true;
+	for (int i = 0; i < kCluceneTries; i++) {
+		// A fresh Document/Field/FileReader every attempt - addDocument()
+		// throwing partway through may already have consumed some or all
+		// of a previous attempt's reader, so retrying with the same one
+		// risks indexing empty/truncated content instead of actually
+		// retrying. Document::add(Field&) stores the field by address and
+		// deletes it from Document's own destructor - not documented, but
+		// confirmed the hard way (a real crash) when these were stack
+		// allocated - so both fields must be heap allocated here.
+		Document* document = new Document;
+		FileReader* fileReader = new FileReader(contentPath, "UTF-8");
+		Field* contentField = new Field(kContentsField, fileReader,
+			Field::STORE_NO | Field::INDEX_TOKENIZED);
+		document->add(*contentField);
+		Field* pathField = new Field(kPathField, wPath,
+			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
+		document->add(*pathField);
+
+		try {
+			fIndexWriter->addDocument(document);
+			STRACE("document added, retries: %i\n", i);
+			delete document;
+			break;
+		} catch (CLuceneError &error) {
+			STRACE("CLuceneError addDocument %s\n", error.what());
+			delete document;
+			fIndexWriter->close();
+			delete fIndexWriter;
+			fIndexWriter = _OpenIndexWriter();
+			if (fIndexWriter == NULL) {
+				status = false;
+				break;
+			}
+		}
+	}
+
+	return status;
+}
+
+
+bool
 CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 {
 	BPath path(&ref);
+
+	// Plain text needs no translation at all. Routing it through
+	// BTranslatorRoster::Translate() anyway - as this used to do
+	// unconditionally - means probing every registered translator (every
+	// image codec included, none of which can even produce
+	// B_TRANSLATOR_TEXT), which is not just wasteful but corrupted heap
+	// memory when fed a source file (see #47). Index it straight from its
+	// own path instead.
+	if (_IsPlainText(ref)) {
+		wchar_t* wPath = to_wchar(path.Path());
+		if (wPath == NULL)
+			return false;
+		bool status = _AddDocumentFromFile(path.Path(), wPath);
+		delete[] wPath;
+		return status;
+	}
 
 	translate_cookie* cookie = new(std::nothrow) translate_cookie;
 	if (cookie == NULL)
@@ -484,42 +563,7 @@ CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
 		return false;
 	}
 
-	bool status = true;
-	for (int i = 0; i < kCluceneTries; i++) {
-		// A fresh Document/Field/FileReader every attempt - addDocument()
-		// throwing partway through may already have consumed some or all
-		// of a previous attempt's reader, so retrying with the same one
-		// risks indexing empty/truncated content instead of actually
-		// retrying. Document::add(Field&) stores the field by address and
-		// deletes it from Document's own destructor - not documented, but
-		// confirmed the hard way (a real crash) when these were stack
-		// allocated - so both fields must be heap allocated here.
-		Document* document = new Document;
-		FileReader* fileReader = new FileReader(tempPath.Path(), "UTF-8");
-		Field* contentField = new Field(kContentsField, fileReader,
-			Field::STORE_NO | Field::INDEX_TOKENIZED);
-		document->add(*contentField);
-		Field* pathField = new Field(kPathField, wPath,
-			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
-		document->add(*pathField);
-
-		try {
-			fIndexWriter->addDocument(document);
-			STRACE("document added, retries: %i\n", i);
-			delete document;
-			break;
-		} catch (CLuceneError &error) {
-			STRACE("CLuceneError addDocument %s\n", error.what());
-			delete document;
-			fIndexWriter->close();
-			delete fIndexWriter;
-			fIndexWriter = _OpenIndexWriter();
-			if (fIndexWriter == NULL) {
-				status = false;
-				break;
-			}
-		}
-	}
+	bool status = _AddDocumentFromFile(tempPath.Path(), wPath);
 
 	delete[] wPath;
 	remove(tempPath.Path());
