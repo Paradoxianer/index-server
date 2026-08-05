@@ -18,6 +18,7 @@
 #include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <TranslatorFormats.h>
 #include <TranslatorRoster.h>
 #include <View.h>
 
@@ -37,10 +38,14 @@ const int32 kThumbnailSize = 128;
 // already guards against for text (see FullTextAnalyser.h).
 const off_t kMaxThumbnailSourceSize = 32 * 1024 * 1024;
 
-// No established Haiku convention for a per-file thumbnail attribute was
-// found (see issue discussion); namespaced like the EXIF analyser's
-// "EXIF:*" attributes to make the origin obvious.
-static const char* const kThumbnailAttribute = "Thumbnail:PNG";
+// Tracker already reads a thumbnail straight from these attributes for
+// every icon it draws (IconCache::GetNodeIcon() -> GetThumbnailFromAttr(),
+// src/kits/tracker/Thumbnails.cpp) - not a new convention invented here.
+// It also requires WebP specifically, and treats an existing thumbnail as
+// stale unless its creation time is after the file's own modification time.
+static const char* const kThumbnailAttribute = "Media:Thumbnail";
+static const char* const kThumbnailCreationTimeAttribute
+	= "Media:Thumbnail:CreationTime";
 
 // Haiku's own vector icon format isn't typed "image/*" (HVIFTranslator
 // registers it as this application/* type - see HVIFTranslator.cpp), even
@@ -55,7 +60,7 @@ namespace {
 struct thumbnail_cookie {
 	BString		path;
 	bool		hasThumbnail;
-	BMallocIO	png;
+	BMallocIO	thumbnailData;
 };
 
 
@@ -125,9 +130,10 @@ do_create_thumbnail(void* data)
 	// its own destructor - nothing else here must delete it afterwards.
 	BBitmapStream destStream(destBitmap);
 	status_t status = BTranslatorRoster::Default()->Translate(&destStream,
-		NULL, NULL, &cookie->png, B_PNG_FORMAT);
+		NULL, NULL, &cookie->thumbnailData, B_WEBP_FORMAT);
 
-	cookie->hasThumbnail = status == B_OK && cookie->png.BufferLength() > 0;
+	cookie->hasThumbnail = status == B_OK
+		&& cookie->thumbnailData.BufferLength() > 0;
 	return B_OK;
 }
 
@@ -205,8 +211,16 @@ ThumbnailAnalyser::AnalyseEntry(const entry_ref& ref)
 		return;
 	}
 
-	file.WriteAttr(kThumbnailAttribute, B_RAW_TYPE, 0, cookie->png.Buffer(),
-		cookie->png.BufferLength());
+	ssize_t written = file.WriteAttr(kThumbnailAttribute, B_RAW_TYPE, 0,
+		cookie->thumbnailData.Buffer(), cookie->thumbnailData.BufferLength());
+	if (written == (ssize_t)cookie->thumbnailData.BufferLength()) {
+		// Must be after the file's own modification time, or Tracker
+		// considers this thumbnail stale and tries to regenerate it itself
+		// (GetThumbnailFromAttr() in Thumbnails.cpp).
+		int64 created = real_time_clock();
+		file.WriteAttr(kThumbnailCreationTimeAttribute, B_TIME_TYPE, 0,
+			&created, sizeof(created));
+	}
 	delete cookie;
 }
 
