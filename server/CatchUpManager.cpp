@@ -8,6 +8,7 @@
 
 #include "CatchUpManager.h"
 
+#include <algorithm>
 #include <vector>
 
 #include <Autolock.h>
@@ -15,6 +16,7 @@
 #include <Debug.h>
 #include <MessageRunner.h>
 #include <Messenger.h>
+#include <Node.h>
 #include <Path.h>
 #include <Query.h>
 
@@ -40,6 +42,35 @@ const bigtime_t kCatchUpStartDelay = 20 * kSecond;
 // doesn't monopolize the disk against whatever the user is doing at the
 // same time. A first-pass heuristic, not a measured optimum - see #33.
 const bigtime_t kCatchUpPaceInterval = 500;
+
+// How often (in processed entries) to advance and persist the sync
+// position mid-run - the same cadence LastEntry() already commits at, so
+// a crash or restart only ever has to redo up to this many entries
+// instead of the entire backlog (see #48).
+const uint32 kSyncPositionInterval = 500;
+
+
+namespace {
+
+
+// entryList is sorted by modified time before processing so the sync
+// position, once advanced past an entry, is a genuine guarantee that
+// everything with an earlier modification time has been committed - the
+// BQuery itself has no defined result order to rely on for that.
+struct QueueEntry {
+	entry_ref	ref;
+	time_t		modified;
+};
+
+
+bool
+CompareQueueEntry(const QueueEntry& a, const QueueEntry& b)
+{
+	return a.modified < b.modified;
+}
+
+
+}	// namespace
 
 
 CatchUpAnalyser::CatchUpAnalyser(const BVolume& volume,
@@ -129,7 +160,7 @@ CatchUpAnalyser::_CatchUp()
 	query.GetPredicate(predicate,pLength);
 	PRINT(("catchup query: %s \n",predicate));
 	
-	std::vector<entry_ref> entryList;
+	std::vector<QueueEntry> entryList;
 	entry_ref ref;
 	while (query.GetNextRef(&ref) == B_OK) {
 		if (fSettings != NULL) {
@@ -139,8 +170,19 @@ CatchUpAnalyser::_CatchUp()
 				continue;
 			}
 		}
-		entryList.push_back(ref);
+		QueueEntry entry;
+		entry.ref = ref;
+		entry.modified = 0;
+		BNode node(&ref);
+		node.GetModificationTime(&entry.modified);
+		entryList.push_back(entry);
 	}
+
+	// A BQuery's result order isn't defined, but advancing the sync
+	// position mid-run needs a guarantee that everything with an earlier
+	// modification time really has been committed already (see #48) -
+	// sort once up front instead of relying on incidental query order.
+	std::sort(entryList.begin(), entryList.end(), CompareQueueEntry);
 
 	PRINT(("CatchUpAnalyser:: entryList.size() %i\n", (int)entryList.size()));
 
@@ -160,10 +202,18 @@ CatchUpAnalyser::_CatchUp()
 
 	for (uint32 i = 0; i < entryList.size(); i++) {
 		if (Stopped()) {
-			// Commit whatever was queued so far - otherwise interrupting a
-			// large catch up (e.g. server restart before it finishes) would
-			// silently discard all progress made up to this point.
+			// Commit whatever was queued so far, and advance the sync
+			// position to match what was actually committed - otherwise
+			// interrupting a large catch up (e.g. server restart before it
+			// finishes) would discard all progress made up to this point,
+			// not just the content (already safe - see #48's history) but
+			// the resume point too, forcing the entire backlog to be
+			// redone from scratch on the next run.
 			LastEntry();
+			if (i > 0) {
+				_WriteSyncSatus(
+					(bigtime_t)entryList[i - 1].modified * kSecond);
+			}
 			delete notifier;
 			return;
 		}
@@ -174,11 +224,13 @@ CatchUpAnalyser::_CatchUp()
 		// iteration is what lets a quick catch up (fewer than 100 entries,
 		// otherwise never hitting the printf's own gate above) still push
 		// at least a start and an end update to observers.
-		notifier->Progress(i, entryList.size(), BPath(&entryList[i]).Path());
-		AnalyseEntry(entryList[i]);
+		notifier->Progress(i, entryList.size(), BPath(&entryList[i].ref).Path());
+		AnalyseEntry(entryList[i].ref);
 		snooze(kCatchUpPaceInterval);
-		if (i % 500 == 0 && i > 0)
+		if (i % kSyncPositionInterval == 0 && i > 0) {
 			LastEntry();
+			_WriteSyncSatus((bigtime_t)entryList[i].modified * kSecond);
+		}
 	}
 	LastEntry();
 
@@ -203,11 +255,12 @@ CatchUpAnalyser::_CreateProgressNotifier()
 		strlcpy(volumeName, "?", sizeof(volumeName));
 
 	// Analysers are named after their add-on (e.g. "FullTextAnalyser").
-	// CatchUpManager only ever runs one CatchUpAnalyser at a time per
-	// volume now, but consecutive runs can cover different analyser sets
-	// (one registered after the previous run's snapshot was taken), so the
-	// identifier still needs to cover both the volume and the analyser set
-	// to not collide with an earlier run's still-fading notification.
+	// Naming them here is what lets a user actually confirm a specific
+	// analyser (e.g. AudioTagAnalyser) is really running rather than
+	// silently sitting idle - worth the length. #53 fixed the underlying
+	// problem this used to expose (the startup run routinely covered only
+	// one analyser, whichever registered first) rather than papering over
+	// it by hiding the analyser list here.
 	BString analyserNames;
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
 		if (i > 0)
@@ -215,6 +268,11 @@ CatchUpAnalyser::_CreateProgressNotifier()
 		analyserNames << fFileAnalyserList.ItemAt(i)->Name();
 	}
 
+	// CatchUpManager only ever runs one CatchUpAnalyser at a time per
+	// volume, but consecutive runs can still cover different analyser sets
+	// (one registered after the previous run's snapshot was taken), so the
+	// identifier still needs to cover both the volume and the analyser set
+	// to not collide with an earlier run's still-fading notification.
 	BString messageID;
 	messageID << "catchup-" << (int32)fVolume.Device() << "-"
 		<< analyserNames;
