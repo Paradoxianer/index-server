@@ -44,6 +44,16 @@ const uint8 kCluceneTries = 10;
 // thread (it processes every entry of a volume serially).
 const bigtime_t kTranslateTimeout = 30 * 1000000;
 
+// CLucene's own default (10000) is tuned for typical documents and is
+// reached by any reasonably large real text file (a log, a big source
+// file) - addDocument() then throws, which _IndexDocument()/Commit()
+// treated as a retryable failure it never was: retried kCluceneTries
+// times against the exact same oversized content, failing identically
+// every time, then abandoning the rest of that Commit() batch (see the
+// fAddQueue.clear() note below). Generous but still bounded, in the same
+// spirit as FullTextAnalyser's kMaxIndexableFileSize.
+const int32 kMaxFieldLength = 1000000;
+
 
 namespace {
 
@@ -176,18 +186,27 @@ CLuceneWriteDataBase::Commit()
 	if (fIndexWriter == NULL)
 		return B_ERROR;
 
+	// One document that _IndexDocument() can never index (e.g. content
+	// over kMaxFieldLength) must not take the rest of this batch down with
+	// it - keep going for whatever's left in the queue, only actually
+	// giving up if the writer itself died (fIndexWriter went NULL inside
+	// _IndexDocument()'s own reopen-and-retry loop), since every other
+	// document would fail immediately too - see kMaxFieldLength's comment.
 	status_t status = B_OK;
 	for (unsigned int i = 0; i < fAddQueue.size(); i++) {
 		if (!_IndexDocument(fAddQueue.at(i))) {
 			status = B_ERROR;
-			break;
+			if (fIndexWriter == NULL)
+				break;
 		}
 	}
 
 	fAddQueue.clear();
-	fIndexWriter->close();
-	delete fIndexWriter;
-	fIndexWriter = NULL;
+	if (fIndexWriter != NULL) {
+		fIndexWriter->close();
+		delete fIndexWriter;
+		fIndexWriter = NULL;
+	}
 
 	return status;
 }
@@ -217,13 +236,17 @@ CLuceneWriteDataBase::AddDocumentWithText(const entry_ref& ref,
 	if (wPath == NULL || wText == NULL) {
 		status = B_NO_MEMORY;
 	} else {
+		// Document::add(Field&) stores the field by address and deletes it
+		// from Document's own destructor - see the identical fix and its
+		// comment in _AddDocumentFromFile() - so both fields must be heap
+		// allocated here too, not stack locals.
 		Document* document = new Document;
-		Field contentField(kContentsField, wText,
+		Field* contentField = new Field(kContentsField, wText,
 			Field::STORE_NO | Field::INDEX_TOKENIZED);
-		document->add(contentField);
-		Field pathField(kPathField, wPath,
+		document->add(*contentField);
+		Field* pathField = new Field(kPathField, wPath,
 			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
-		document->add(pathField);
+		document->add(*pathField);
 
 		try {
 			fIndexWriter->addDocument(document);
@@ -332,8 +355,10 @@ CLuceneWriteDataBase::_OpenIndexWriter()
 
 			writer = new IndexWriter(fDataBasePath.Path(),
 				&fStandardAnalyzer, createIndex);
-			if (writer)
+			if (writer) {
+				writer->setMaxFieldLength(kMaxFieldLength);
 				break;
+			}
 		} catch (CLuceneError &error) {
 			STRACE("CLuceneError: _OpenIndexWriter %s\n", error.what());
 			delete writer;
