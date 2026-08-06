@@ -143,6 +143,10 @@ AnalyserDispatcher::AnalyserDispatcher(const char* name)
 
 AnalyserDispatcher::~AnalyserDispatcher()
 {
+	// Every other method touching fFileAnalyserList locks first - this one
+	// didn't, racing AddOnMonitorHandler's RemoveAnalyser() during shutdown
+	// (add-ons and volumes tearing down concurrently) into a double free.
+	BAutolock _(this);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		delete fFileAnalyserList.ItemAt(i);
 }
