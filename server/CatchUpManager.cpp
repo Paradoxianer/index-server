@@ -42,17 +42,25 @@ const bigtime_t kCatchUpStartDelay = 20 * kSecond;
 const bigtime_t kCatchUpPaceInterval = 500;
 
 
-CatchUpAnalyser::CatchUpAnalyser(const BVolume& volume, time_t start,
-	time_t end, BHandler* manager, IndexServerSettings* settings)
+CatchUpAnalyser::CatchUpAnalyser(const BVolume& volume,
+	CatchUpManager* manager, IndexServerSettings* settings)
 	:
 	AnalyserDispatcher("CatchUpAnalyser"),
 	fVolume(volume),
-	fStart(start),
-	fEnd(end),
+	fStart(0),
+	fEnd(0),
 	fCatchUpManager(manager),
 	fSettings(settings)
 {
 
+}
+
+
+void
+CatchUpAnalyser::SetTimeRange(time_t start, time_t end)
+{
+	fStart = start;
+	fEnd = end;
 }
 
 
@@ -98,6 +106,8 @@ CatchUpAnalyser::AnalyseEntry(const entry_ref& ref)
 void
 CatchUpAnalyser::_CatchUp()
 {
+	fCatchUpManager->PopulateCatchUp(this);
+
 	STRACE("_CatchUp start %i, end %i\n", (int)fStart, (int)fEnd);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
 		STRACE("- Analyser %s\n", fFileAnalyserList.ItemAt(i)->Name().String());
@@ -322,6 +332,25 @@ CatchUpManager::CatchUp()
 	if (fRegisteredAnalysers.empty())
 		return false;
 
+	// Which analysers this run actually covers, and its time window, are
+	// filled in later by PopulateCatchUp() - see its own comment for why.
+	CatchUpAnalyser* catchUpAnalyser = new CatchUpAnalyser(fVolume, this,
+		fSettings);
+	if (!catchUpAnalyser)
+		return false;
+	if (!fCatchUpAnalyserList.AddItem(catchUpAnalyser)) {
+		delete catchUpAnalyser;
+		return false;
+	}
+
+	catchUpAnalyser->StartAnalysing();
+	return true;
+}
+
+
+void
+CatchUpManager::PopulateCatchUp(CatchUpAnalyser* catchUpAnalyser)
+{
 	bigtime_t startBig  = 0;
 	bigtime_t endBig = real_time_clock_usecs();
 	for (size_t i = 0; i < fRegisteredAnalysers.size(); i++) {
@@ -333,15 +362,7 @@ CatchUpManager::CatchUp()
 		if (settings.watchingStart > endBig)
 			endBig = settings.watchingStart;
 	}
-
-	CatchUpAnalyser* catchUpAnalyser = new CatchUpAnalyser(fVolume,
-		startBig / kSecond, endBig / kSecond, this, fSettings);
-	if (!catchUpAnalyser)
-		return false;
-	if (!fCatchUpAnalyserList.AddItem(catchUpAnalyser)) {
-		delete catchUpAnalyser;
-		return false;
-	}
+	catchUpAnalyser->SetTimeRange(startBig / kSecond, endBig / kSecond);
 
 	// Each catch up run gets its own fresh FileAnalyser clone from the
 	// add-on - the registered AnalyserSettings reference is what survives
@@ -356,9 +377,6 @@ CatchUpManager::CatchUp()
 		if (!catchUpAnalyser->AddAnalyser(analyser))
 			delete analyser;
 	}
-
-	catchUpAnalyser->StartAnalysing();
-	return true;
 }
 
 

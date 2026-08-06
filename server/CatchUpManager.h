@@ -25,17 +25,22 @@
 
 
 class IndexProgressNotifier;
+class CatchUpManager;
 
 
 class CatchUpAnalyser : public AnalyserDispatcher {
 public:
 								CatchUpAnalyser(const BVolume& volume,
-									time_t start, time_t end,
-									BHandler* manager,
+									CatchUpManager* manager,
 									IndexServerSettings* settings);
 
 			void				MessageReceived(BMessage *message);
 			void				StartAnalysing();
+
+			//! Called by CatchUpManager::PopulateCatchUp(), right before
+			//! the delayed kCatchUp message fires - see its own comment
+			//! for why this isn't done any earlier.
+			void				SetTimeRange(time_t start, time_t end);
 
 			void				AnalyseEntry(const entry_ref& ref);
 
@@ -50,7 +55,7 @@ private:
 			time_t				fStart;
 			time_t				fEnd;
 
-			BHandler*			fCatchUpManager;
+			CatchUpManager*		fCatchUpManager;
 			IndexServerSettings*	fSettings;
 };
 
@@ -83,6 +88,20 @@ public:
 			bool				CatchUp();
 			//! Stop all catch up threads.
 			void				Stop();
+
+			//! Clones every currently registered analyser into
+			//! catchUpAnalyser and computes its time window - called from
+			//! CatchUpAnalyser::_CatchUp() itself, not from CatchUp(): at
+			//! CatchUp()-call time, only whichever analyser triggered this
+			//! particular run (e.g. the first one to register at startup)
+			//! is necessarily registered yet - others arriving during the
+			//! kCatchUpStartDelay pause would each just mark themselves
+			//! pending and get their own, separate, later run instead of
+			//! joining this one. Deferring this until just before the
+			//! query actually runs picks up everyone who registered by
+			//! then instead.
+			void				PopulateCatchUp(
+									CatchUpAnalyser* catchUpAnalyser);
 
 			//! True if a catch up run is currently active for this volume.
 			bool				IsCatchingUp()
