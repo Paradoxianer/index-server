@@ -94,27 +94,41 @@ do_create_thumbnail(void* data)
 		return B_OK;
 	}
 
+	// Tracker's own GetThumbnailFromAttr() (Thumbnails.cpp) imports a stored
+	// thumbnail directly via BBitmap::ImportBits() with no rescale whenever
+	// the requested icon size is exactly B_XXL_ICON (128, same as
+	// kThumbnailSize) - it only assumes a fixed kThumbnailSize x
+	// kThumbnailSize square. A canvas sized to the source's own aspect
+	// ratio (e.g. 128x64 for a wide image) silently fails that import.
+	// Always emit a fixed square canvas, letterboxing the scaled content
+	// centered within it exactly like Tracker's own ScaleBitmap()/
+	// ThumbBounds() do, so the two stay bit-compatible.
 	float longSide = sourceWidth > sourceHeight ? sourceWidth : sourceHeight;
 	float scale = kThumbnailSize / longSide;
 	if (scale > 1)
 		scale = 1; // never upscale a smaller image
-	int32 destWidth = (int32)(sourceWidth * scale);
-	int32 destHeight = (int32)(sourceHeight * scale);
+	float destWidth = sourceWidth * scale;
+	float destHeight = sourceHeight * scale;
 	if (destWidth < 1)
 		destWidth = 1;
 	if (destHeight < 1)
 		destHeight = 1;
 
-	BBitmap* destBitmap = new(std::nothrow) BBitmap(
-		BRect(0, 0, destWidth - 1, destHeight - 1), B_RGBA32, true);
+	BRect canvasBounds(0, 0, kThumbnailSize - 1, kThumbnailSize - 1);
+	BRect destBounds(0, 0, destWidth - 1, destHeight - 1);
+	destBounds.OffsetBySelf((kThumbnailSize - destWidth) / 2.0f,
+		(kThumbnailSize - destHeight) / 2.0f);
+
+	BBitmap* destBitmap = new(std::nothrow) BBitmap(canvasBounds, B_RGBA32,
+		true);
 	if (destBitmap == NULL || destBitmap->InitCheck() != B_OK) {
 		delete sourceBitmap;
 		delete destBitmap;
 		return B_OK;
 	}
 
-	BView* view = new(std::nothrow) BView(destBitmap->Bounds(), "thumb",
-		B_FOLLOW_NONE, 0);
+	BView* view = new(std::nothrow) BView(canvasBounds, "thumb",
+		B_FOLLOW_NONE, B_WILL_DRAW);
 	if (view == NULL) {
 		delete sourceBitmap;
 		delete destBitmap;
@@ -122,7 +136,12 @@ do_create_thumbnail(void* data)
 	}
 	destBitmap->AddChild(view);
 	destBitmap->Lock();
-	view->DrawBitmap(sourceBitmap, sourceBounds, destBitmap->Bounds());
+	view->SetLowColor(B_TRANSPARENT_COLOR);
+	view->FillRect(canvasBounds, B_SOLID_LOW);
+	view->SetDrawingMode(B_OP_ALPHA);
+	view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_COMPOSITE);
+	view->DrawBitmap(sourceBitmap, sourceBounds, destBounds,
+		B_FILTER_BITMAP_BILINEAR);
 	view->Sync();
 	destBitmap->Unlock();
 	delete sourceBitmap;
