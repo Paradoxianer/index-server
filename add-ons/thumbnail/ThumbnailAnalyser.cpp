@@ -9,6 +9,7 @@
 
 #include <new>
 #include <string.h>
+#include <strings.h>
 
 #include <Bitmap.h>
 #include <BitmapStream.h>
@@ -174,8 +175,13 @@ ThumbnailAnalyser::_IsSupportedImage(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	return strncmp(mimeType, "image/", 6) == 0
-		|| strcmp(mimeType, kHVIFMimeType) == 0;
+	// MIME types compare case-insensitively per BMimeType's own documented
+	// equality rule - HVIFTranslator's registered type and what
+	// update_mime_info() actually sniffs onto a file differ in case
+	// ("x-vnd.Haiku-icon" vs. "x-vnd.haiku-icon"), so a plain strcmp here
+	// silently rejected every real HVIF file on disk.
+	return strncasecmp(mimeType, "image/", 6) == 0
+		|| strcasecmp(mimeType, kHVIFMimeType) == 0;
 }
 
 

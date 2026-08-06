@@ -9,6 +9,7 @@
 
 #include <new>
 #include <string.h>
+#include <strings.h>
 
 #include <Node.h>
 #include <NodeInfo.h>
@@ -191,7 +192,7 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		char mimeType[B_MIME_TYPE_LENGTH];
 		BNodeInfo nodeInfo(&node);
 		if (node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
-			&& strncmp(mimeType, "text/", 5) == 0) {
+			&& strncasecmp(mimeType, "text/", 5) == 0) {
 			return true;
 		}
 	}

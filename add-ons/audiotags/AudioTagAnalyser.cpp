@@ -2,6 +2,7 @@
 
 #include <new>
 #include <string.h>
+#include <strings.h>
 
 #include <File.h>
 #include <Mime.h>
@@ -91,7 +92,9 @@ AudioTagAnalyser::_IsAudioFile(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	return strncmp(mimeType, "audio/", 6) == 0;
+	// MIME types compare case-insensitively per BMimeType's own documented
+	// equality rule (see #49).
+	return strncasecmp(mimeType, "audio/", 6) == 0;
 }
 
 

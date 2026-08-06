@@ -9,6 +9,7 @@
 
 #include <new>
 #include <string.h>
+#include <strings.h>
 
 #include <File.h>
 #include <Mime.h>
@@ -121,9 +122,10 @@ ExifAnalyser::_IsSupportedImage(const entry_ref& ref)
 
 	// libexif reads EXIF out of JPEG's APP1 marker or a raw TIFF/EXIF blob;
 	// most other image formats never carry EXIF at all, so there is no
-	// point handing them to it.
-	return strcmp(mimeType, "image/jpeg") == 0
-		|| strcmp(mimeType, "image/tiff") == 0;
+	// point handing them to it. MIME types compare case-insensitively per
+	// BMimeType's own documented equality rule (see #49).
+	return strcasecmp(mimeType, "image/jpeg") == 0
+		|| strcasecmp(mimeType, "image/tiff") == 0;
 }
 
 

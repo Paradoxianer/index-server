@@ -10,6 +10,7 @@
 #include "CLuceneDataBase.h"
 
 #include <new>
+#include <strings.h>
 
 #include <Autolock.h>
 #include <Directory.h>
@@ -437,7 +438,9 @@ CLuceneWriteDataBase::_IsPlainText(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	return strncmp(mimeType, "text/", 5) == 0;
+	// MIME types compare case-insensitively per BMimeType's own documented
+	// equality rule (see #49).
+	return strncasecmp(mimeType, "text/", 5) == 0;
 }
 
 

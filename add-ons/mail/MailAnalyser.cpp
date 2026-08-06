@@ -9,6 +9,7 @@
 
 #include <new>
 #include <string.h>
+#include <strings.h>
 
 #include <E-mail.h>
 #include <MailMessage.h>
@@ -111,7 +112,9 @@ MailAnalyser::_IsMailFile(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	return strcmp(mimeType, B_MAIL_TYPE) == 0;
+	// MIME types compare case-insensitively per BMimeType's own documented
+	// equality rule (see #49).
+	return strcasecmp(mimeType, B_MAIL_TYPE) == 0;
 }
 
 
