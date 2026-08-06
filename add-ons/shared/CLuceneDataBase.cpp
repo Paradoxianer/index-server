@@ -19,6 +19,7 @@
 #include <Node.h>
 #include <NodeInfo.h>
 #include <TranslatorRoster.h>
+#include <UnicodeChar.h>
 
 #include "RunWithTimeout.h"
 
@@ -92,19 +93,29 @@ cleanup_translate(void* data)
 BLocker CLuceneWriteDataBase::sCLuceneLock("CLucene index lock");
 
 
+// mbstowcs() depends on the process's current locale to decode multi-byte
+// sequences, but a process starts in the locale-less "POSIX" locale unless
+// something explicitly opts in - silently failing (and thereby dropping
+// the whole document from the index) on any path with so much as one
+// accented character (see #56). Haiku paths are UTF-8 natively; decoding
+// that with BUnicodeChar::FromUTF8() doesn't depend on any locale being
+// configured at all.
 wchar_t* to_wchar(const char *str)
 {
 	if (str == NULL)
-		return NULL ;
+		return NULL;
 
-	int size = strlen(str) * sizeof(wchar_t) ;
-	wchar_t *wStr = new wchar_t[size] ;
+	size_t length = BUnicodeChar::UTF8StringLength(str);
+	wchar_t* wStr = new(std::nothrow) wchar_t[length + 1];
+	if (wStr == NULL)
+		return NULL;
 
-	if (mbstowcs(wStr, str, size) == -1) {
-		delete[] wStr ;
-		return NULL ;
-	} else
-		return wStr ;
+	const char* current = str;
+	for (size_t i = 0; i < length; i++)
+		wStr[i] = (wchar_t)BUnicodeChar::FromUTF8(&current);
+	wStr[length] = 0;
+
+	return wStr;
 }
 
 
@@ -301,8 +312,19 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 				if (wPath == NULL)
 					continue;
 
+				// wcstombs() is the same locale-dependent trap to_wchar()
+				// used to fall into (see #56 and that function's comment) -
+				// BUnicodeChar::ToUTF8() doesn't depend on locale at all.
+				// A UTF-8 character is up to 4 bytes, so stop with enough
+				// room left for one more plus the terminator.
 				char path[B_PATH_NAME_LENGTH];
-				wcstombs(path, wPath, sizeof(path));
+				char* pathEnd = path;
+				for (const TCHAR* w = wPath; *w != 0; w++) {
+					if (pathEnd - path >= B_PATH_NAME_LENGTH - 5)
+						break;
+					BUnicodeChar::ToUTF8((uint32)*w, &pathEnd);
+				}
+				*pathEnd = '\0';
 
 				entry_ref ref;
 				BEntry entry(path);
