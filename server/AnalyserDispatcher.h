@@ -51,9 +51,17 @@ public:
 protected:
 			FileAnalyserList	fFileAnalyserList;
 
+			//! Files that never went through a native Haiku write path
+			//! (checked out by git, arrived over scp, ...) have no
+			//! BEOS:TYPE at all, which every analyser here silently treats
+			//! as "nothing to do" (see #41). Every AnalyseEntry()/
+			//! MoveEntry() path needs this before dispatching -
+			//! CatchUpAnalyser used to skip it entirely, silently leaving
+			//! an untyped file invisible to catch up forever (see #50).
+			void				_EnsureMimeType(const entry_ref& ref);
+
 private:
 			FileAnalyser*		_FindAnalyser(const BString& name);
-			void				_EnsureMimeType(const entry_ref& ref);
 
 			int32				fStopped;
 };

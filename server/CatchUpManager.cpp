@@ -84,6 +84,7 @@ void
 CatchUpAnalyser::AnalyseEntry(const entry_ref& ref)
 {
 	BAutolock _(this);
+	_EnsureMimeType(ref);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
 		FileAnalyser* analyser = fFileAnalyserList.ItemAt(i);
 		const analyser_settings& settings = analyser->CachedSettings();
