@@ -10,18 +10,11 @@
 #include "CLuceneDataBase.h"
 
 #include <new>
-#include <strings.h>
 
 #include <Autolock.h>
 #include <Directory.h>
 #include <Entry.h>
-#include <File.h>
-#include <Node.h>
-#include <NodeInfo.h>
-#include <TranslatorRoster.h>
 #include <UnicodeChar.h>
-
-#include "RunWithTimeout.h"
 
 
 #define DEBUG_CLUCENE_DATABASE
@@ -41,10 +34,6 @@ using namespace lucene::util;
 
 const uint8 kCluceneTries = 10;
 
-// A hung or pathological translator must not stall the whole VolumeWorker
-// thread (it processes every entry of a volume serially).
-const bigtime_t kTranslateTimeout = 30 * 1000000;
-
 // CLucene's own default (10000) is tuned for typical documents and is
 // reached by any reasonably large real text file (a log, a big source
 // file) - addDocument() then throws, which _IndexDocument()/Commit()
@@ -54,40 +43,6 @@ const bigtime_t kTranslateTimeout = 30 * 1000000;
 // fAddQueue.clear() note below). Generous but still bounded, in the same
 // spirit as FullTextAnalyser's kMaxIndexableFileSize.
 const int32 kMaxFieldLength = 1000000;
-
-
-namespace {
-
-
-// Owns the files itself rather than pointing at the caller's stack locals:
-// on timeout, ownership passes to the still-running helper thread (see
-// RunWithTimeout.h), which may still be reading/writing them.
-struct translate_cookie {
-	BFile*	source;
-	BFile*	destination;
-};
-
-
-status_t
-do_translate(void* data)
-{
-	translate_cookie* cookie = (translate_cookie*)data;
-	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
-		cookie->destination, 'TEXT');
-}
-
-
-void
-cleanup_translate(void* data)
-{
-	translate_cookie* cookie = (translate_cookie*)data;
-	delete cookie->source;
-	delete cookie->destination;
-	delete cookie;
-}
-
-
-}	// namespace
 
 
 BLocker CLuceneWriteDataBase::sCLuceneLock("CLucene index lock");
@@ -122,19 +77,15 @@ wchar_t* to_wchar(const char *str)
 CLuceneWriteDataBase::CLuceneWriteDataBase(const BPath& databasePath)
 	:
 	fDataBasePath(databasePath),
-	fTempPath(databasePath),
 	fIndexWriter(NULL)
 {
 	printf("CLuceneWriteDataBase fDataBasePath %s\n", fDataBasePath.Path());
 	create_directory(fDataBasePath.Path(), 0755);
-
-	fTempPath.Append("temp_file");
 }
 
 
 CLuceneWriteDataBase::~CLuceneWriteDataBase()
 {
-	// TODO: delete fTempPath file
 }
 
 
@@ -149,12 +100,31 @@ CLuceneWriteDataBase::InitCheck()
 status_t
 CLuceneWriteDataBase::AddDocument(const entry_ref& ref)
 {
+	return _QueueDocument(ref, BPath(&ref));
+}
+
+
+status_t
+CLuceneWriteDataBase::AddDocumentFromContentFile(const entry_ref& ref,
+	const BPath& contentPath)
+{
+	return _QueueDocument(ref, contentPath);
+}
+
+
+status_t
+CLuceneWriteDataBase::_QueueDocument(const entry_ref& ref,
+	const BPath& contentPath)
+{
 	// check if already in the queue
 	for (unsigned int i = 0; i < fAddQueue.size(); i++) {
-		if (fAddQueue.at(i) == ref)
+		if (fAddQueue.at(i).ref == ref)
 			return B_OK;
 	}
-	fAddQueue.push_back(ref);
+	QueuedDocument doc;
+	doc.ref = ref;
+	doc.contentPath = contentPath;
+	fAddQueue.push_back(doc);
 
 	return B_OK;
 }
@@ -186,7 +156,13 @@ CLuceneWriteDataBase::Commit()
 	// the same on-disk directory.
 	BAutolock lock(sCLuceneLock);
 
-	_RemoveDocuments(fAddQueue);
+	// Delete any existing version of a re-added document first - CLucene
+	// has no update, so refreshing a changed file's content is a delete
+	// followed by a re-add.
+	std::vector<entry_ref> addedRefs;
+	for (unsigned int i = 0; i < fAddQueue.size(); i++)
+		addedRefs.push_back(fAddQueue.at(i).ref);
+	_RemoveDocuments(addedRefs);
 	_RemoveDocuments(fDeleteQueue);
 	fDeleteQueue.clear();
 
@@ -474,24 +450,6 @@ CLuceneWriteDataBase::_RemoveDocument(wchar_t* wPath, IndexReader* reader)
 
 
 bool
-CLuceneWriteDataBase::_IsPlainText(const entry_ref& ref)
-{
-	BNode node(&ref);
-	if (node.InitCheck() != B_OK)
-		return false;
-
-	char mimeType[B_MIME_TYPE_LENGTH];
-	BNodeInfo nodeInfo(&node);
-	if (nodeInfo.GetType(mimeType) != B_OK)
-		return false;
-
-	// MIME types compare case-insensitively per BMimeType's own documented
-	// equality rule (see #49).
-	return strncasecmp(mimeType, "text/", 5) == 0;
-}
-
-
-bool
 CLuceneWriteDataBase::_AddDocumentFromFile(const char* contentPath,
 	const wchar_t* wPath)
 {
@@ -537,85 +495,13 @@ CLuceneWriteDataBase::_AddDocumentFromFile(const char* contentPath,
 
 
 bool
-CLuceneWriteDataBase::_IndexDocument(const entry_ref& ref)
+CLuceneWriteDataBase::_IndexDocument(const QueuedDocument& doc)
 {
-	BPath path(&ref);
-
-	// Plain text needs no translation at all. Routing it through
-	// BTranslatorRoster::Translate() anyway - as this used to do
-	// unconditionally - means probing every registered translator (every
-	// image codec included, none of which can even produce
-	// B_TRANSLATOR_TEXT), which is not just wasteful but corrupted heap
-	// memory when fed a source file (see #47). Index it straight from its
-	// own path instead.
-	if (_IsPlainText(ref)) {
-		wchar_t* wPath = to_wchar(path.Path());
-		if (wPath == NULL)
-			return false;
-		bool status = _AddDocumentFromFile(path.Path(), wPath);
-		delete[] wPath;
-		return status;
-	}
-
-	translate_cookie* cookie = new(std::nothrow) translate_cookie;
-	if (cookie == NULL)
-		return false;
-	cookie->source = new(std::nothrow) BFile(path.Path(), B_READ_ONLY);
-	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
-		STRACE("Can't open inFile for %s\n", path.Path());
-		cleanup_translate(cookie);
-		return false;
-	}
-
-	// Unique per document rather than the single fTempPath shared across
-	// the whole batch - reusing one path meant the *next* document's
-	// translate() could truncate/overwrite this document's temp file
-	// before its FileReader (opened further down, consumed lazily by
-	// addDocument() below) had actually been read, silently indexing it
-	// with empty content. The node ref is already unique and available
-	// without adding a counter to track.
-	node_ref nodeRef;
-	if (cookie->source->GetNodeRef(&nodeRef) != B_OK) {
-		cleanup_translate(cookie);
-		return false;
-	}
-	BPath tempPath(fTempPath.Path());
-	BString tempName;
-	tempName.SetToFormat("temp_file_%" B_PRId64, (int64)nodeRef.node);
-	tempPath.GetParent(&tempPath);
-	tempPath.Append(tempName.String());
-
-	cookie->destination = new(std::nothrow) BFile(tempPath.Path(),
-		B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
-	if (cookie->destination == NULL
-		|| cookie->destination->InitCheck() != B_OK) {
-		STRACE("Can't open outFile for %s\n", path.Path());
-		cleanup_translate(cookie);
-		return false;
-	}
-
-	status_t translateStatus = run_with_timeout(do_translate, cookie,
-		cleanup_translate, kTranslateTimeout);
-	if (translateStatus == B_TIMED_OUT) {
-		// cookie now belongs to the still-running helper thread; must not
-		// touch it (or tempPath, which it may still be writing to) here.
-		return false;
-	}
-	cleanup_translate(cookie);
-	if (translateStatus != B_OK) {
-		remove(tempPath.Path());
-		return false;
-	}
-
+	BPath path(&doc.ref);
 	wchar_t* wPath = to_wchar(path.Path());
-	if (wPath == NULL) {
-		remove(tempPath.Path());
+	if (wPath == NULL)
 		return false;
-	}
-
-	bool status = _AddDocumentFromFile(tempPath.Path(), wPath);
-
+	bool status = _AddDocumentFromFile(doc.contentPath.Path(), wPath);
 	delete[] wPath;
-	remove(tempPath.Path());
 	return status;
 }

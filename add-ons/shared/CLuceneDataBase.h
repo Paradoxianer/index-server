@@ -37,16 +37,29 @@ public:
 
 			status_t			InitCheck();
 
+			//! Queues ref for indexing from its own file content.
 			status_t			AddDocument(const entry_ref& ref);
+
+			//! Like AddDocument(), but reads content from contentPath
+			//! instead of ref's own file - for callers that extract or
+			//! convert content themselves (e.g. FullTextAnalyser
+			//! translating a non-text file to a temp text file first)
+			//! rather than pointing at something this class can read
+			//! directly. Queued and committed together with plain
+			//! AddDocument() entries; this class never touches or deletes
+			//! contentPath - the caller owns its lifecycle.
+			status_t			AddDocumentFromContentFile(
+									const entry_ref& ref,
+									const BPath& contentPath);
+
 			status_t			RemoveDocument(const entry_ref& ref);
 			status_t			Commit();
 
 			//! Indexes already-extracted plain text under ref's path,
-			//! bypassing the BTranslatorRoster/queue pipeline entirely -
-			//! for analysers that produce text themselves (e.g. a mail
-			//! body) instead of pointing at a file BTranslatorRoster can
-			//! convert. Commits immediately rather than joining the
-			//! regular queue/Commit() cycle.
+			//! bypassing the queue pipeline entirely - for analysers that
+			//! produce text themselves (e.g. a mail body) instead of
+			//! pointing at any file at all. Commits immediately rather
+			//! than joining the regular queue/Commit() cycle.
 			status_t			AddDocumentWithText(const entry_ref& ref,
 								const BString& text);
 
@@ -59,6 +72,14 @@ public:
 								int32 maxResults, BMessage& reply);
 
 private:
+			//! A queued document and where to actually read its content
+			//! from - ref's own path (AddDocument()) or an alternate path
+			//! supplied by the caller (AddDocumentFromContentFile()).
+			struct QueuedDocument {
+				entry_ref		ref;
+				BPath			contentPath;
+			};
+
 			IndexWriter*		_OpenIndexWriter();
 			IndexReader*		_OpenIndexReader();
 
@@ -66,16 +87,15 @@ private:
 			bool				_RemoveDocument(wchar_t* doc,
 									IndexReader* reader);
 
-			bool				_IndexDocument(const entry_ref& ref);
-			bool				_IsPlainText(const entry_ref& ref);
+			status_t			_QueueDocument(const entry_ref& ref,
+									const BPath& contentPath);
+			bool				_IndexDocument(const QueuedDocument& doc);
 			bool				_AddDocumentFromFile(const char* contentPath,
 									const wchar_t* wPath);
 
 			BPath				fDataBasePath;
 
-			BPath				fTempPath;
-
-			std::vector<entry_ref>	fAddQueue;
+			std::vector<QueuedDocument>	fAddQueue;
 			std::vector<entry_ref>	fDeleteQueue;
 
 			StandardAnalyzer	fStandardAnalyzer;

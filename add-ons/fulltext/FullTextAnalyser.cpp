@@ -11,6 +11,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include <File.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
@@ -34,6 +35,10 @@
 // Identify() is normally just header sniffing, but a misbehaving translator
 // must not be allowed to stall the whole VolumeWorker thread over it.
 const bigtime_t kIdentifyTimeout = 5 * 1000000;
+
+// A hung or pathological translator must not stall the whole VolumeWorker
+// thread either (it processes every entry of a volume serially).
+const bigtime_t kTranslateTimeout = 30 * 1000000;
 
 
 namespace {
@@ -66,6 +71,34 @@ cleanup_identify(void* data)
 }
 
 
+// Owns the files itself rather than pointing at the caller's stack locals:
+// on timeout, ownership passes to the still-running helper thread (see
+// RunWithTimeout.h), which may still be reading/writing them.
+struct translate_cookie {
+	BFile*	source;
+	BFile*	destination;
+};
+
+
+status_t
+do_translate(void* data)
+{
+	translate_cookie* cookie = (translate_cookie*)data;
+	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
+		cookie->destination, 'TEXT');
+}
+
+
+void
+cleanup_translate(void* data)
+{
+	translate_cookie* cookie = (translate_cookie*)data;
+	delete cookie->source;
+	delete cookie->destination;
+	delete cookie;
+}
+
+
 }	// namespace
 
 
@@ -86,6 +119,7 @@ FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)
 
 FullTextAnalyser::~FullTextAnalyser()
 {
+	_DeletePendingTempFiles();
 	delete fWriteDataBase;
 }
 
@@ -109,7 +143,11 @@ FullTextAnalyser::AnalyseEntry(const entry_ref& ref)
 		return;
 
 	//STRACE("FullTextAnalyser AnalyseEntry: %s %s\n", ref.name, path.Path());
-	fWriteDataBase->AddDocument(ref);
+	if (_IsPlainText(ref)) {
+		fWriteDataBase->AddDocument(ref);
+	} else if (!_QueueTranslated(ref)) {
+		return;
+	}
 
 	fNUncommited++;
 	if (fNUncommited > 100)
@@ -142,6 +180,7 @@ void
 FullTextAnalyser::LastEntry()
 {
 	fWriteDataBase->Commit();
+	_DeletePendingTempFiles();
 	fNUncommited = 0;
 }
 
@@ -183,19 +222,10 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	// Plain text is always indexable content on its own - no translator can
 	// even produce B_TRANSLATOR_TEXT from it, so asking BTranslatorRoster to
 	// Identify() it here would only probe every registered translator (every
-	// image codec included) for nothing. See the same reasoning in
-	// CLuceneWriteDataBase::_IndexDocument(), which is what actually reads
-	// this content - one of those translators corrupted heap memory when fed
-	// a source file this way (see #47).
-	{
-		BNode node(&ref);
-		char mimeType[B_MIME_TYPE_LENGTH];
-		BNodeInfo nodeInfo(&node);
-		if (node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
-			&& strncasecmp(mimeType, "text/", 5) == 0) {
-			return true;
-		}
-	}
+	// image codec included) for nothing, which is not just wasteful but
+	// corrupted heap memory when fed a source file this way (see #47).
+	if (_IsPlainText(ref))
+		return true;
 
 	identify_cookie* cookie = new(std::nothrow) identify_cookie;
 	if (cookie == NULL)
@@ -215,6 +245,86 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	}
 	cleanup_identify(cookie);
 	return status == B_OK;
+}
+
+
+bool
+FullTextAnalyser::_IsPlainText(const entry_ref& ref)
+{
+	BNode node(&ref);
+	char mimeType[B_MIME_TYPE_LENGTH];
+	BNodeInfo nodeInfo(&node);
+
+	// MIME types compare case-insensitively per BMimeType's own documented
+	// equality rule (see #49).
+	return node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
+		&& strncasecmp(mimeType, "text/", 5) == 0;
+}
+
+
+bool
+FullTextAnalyser::_QueueTranslated(const entry_ref& ref)
+{
+	BPath path(&ref);
+
+	translate_cookie* cookie = new(std::nothrow) translate_cookie;
+	if (cookie == NULL)
+		return false;
+	cookie->source = new(std::nothrow) BFile(path.Path(), B_READ_ONLY);
+	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
+		STRACE("Can't open inFile for %s\n", path.Path());
+		cleanup_translate(cookie);
+		return false;
+	}
+
+	// Unique per document - more than one translated document can be
+	// pending at once between here and the Commit() that actually indexes
+	// it, so no two temp files may share a path. The node ref is already
+	// unique and available without adding a counter to track.
+	node_ref nodeRef;
+	if (cookie->source->GetNodeRef(&nodeRef) != B_OK) {
+		cleanup_translate(cookie);
+		return false;
+	}
+	BPath tempPath(fDataBasePath);
+	BString tempName;
+	tempName.SetToFormat("temp_file_%" B_PRId64, (int64)nodeRef.node);
+	tempPath.Append(tempName.String());
+
+	cookie->destination = new(std::nothrow) BFile(tempPath.Path(),
+		B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
+	if (cookie->destination == NULL
+		|| cookie->destination->InitCheck() != B_OK) {
+		STRACE("Can't open outFile for %s\n", path.Path());
+		cleanup_translate(cookie);
+		return false;
+	}
+
+	status_t translateStatus = run_with_timeout(do_translate, cookie,
+		cleanup_translate, kTranslateTimeout);
+	if (translateStatus == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; must not
+		// touch it (or tempPath, which it may still be writing to) here.
+		return false;
+	}
+	cleanup_translate(cookie);
+	if (translateStatus != B_OK) {
+		remove(tempPath.Path());
+		return false;
+	}
+
+	fWriteDataBase->AddDocumentFromContentFile(ref, tempPath);
+	fPendingTempFiles.push_back(tempPath.Path());
+	return true;
+}
+
+
+void
+FullTextAnalyser::_DeletePendingTempFiles()
+{
+	for (unsigned int i = 0; i < fPendingTempFiles.size(); i++)
+		remove(fPendingTempFiles.at(i).String());
+	fPendingTempFiles.clear();
 }
 
 

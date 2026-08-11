@@ -11,9 +11,13 @@
 
 #include "IndexServerAddOn.h"
 
+#include <String.h>
 #include <Path.h>
 
-#include "TextDataBase.h"
+#include <vector>
+
+
+class CLuceneWriteDataBase;
 
 
 const char* kFullTextDirectory = "FullTextAnalyser";
@@ -44,11 +48,21 @@ public:
 private:
 	inline	bool				_InterestingEntry(const entry_ref& ref);
 	inline	bool				_IsInIndexDirectory(const entry_ref& ref);
+	inline	bool				_IsPlainText(const entry_ref& ref);
 
-			TextWriteDataBase*	fWriteDataBase;
+			//! Translates ref to a temp plain-text file next to the
+			//! index (kTranslateTimeout-bounded) and queues it for
+			//! indexing. The temp path is remembered in
+			//! fPendingTempFiles and removed once the next Commit()
+			//! has consumed it.
+			bool				_QueueTranslated(const entry_ref& ref);
+			void				_DeletePendingTempFiles();
+
+			CLuceneWriteDataBase*	fWriteDataBase;
 			BPath				fDataBasePath;
 
 			uint32				fNUncommited;
+			std::vector<BString>	fPendingTempFiles;
 };
 
 
