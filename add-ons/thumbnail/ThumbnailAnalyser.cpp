@@ -19,6 +19,7 @@
 #include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <TranslationUtils.h>
 #include <TranslatorFormats.h>
 #include <TranslatorRoster.h>
 #include <View.h>
@@ -74,17 +75,13 @@ do_create_thumbnail(void* data)
 	if (file.InitCheck() != B_OK)
 		return B_OK;
 
-	BBitmapStream sourceStream;
-	if (BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
-			&sourceStream, B_TRANSLATOR_BITMAP) != B_OK) {
+	// BTranslationUtils::GetBitmap() is the exact same
+	// Translate(B_TRANSLATOR_BITMAP) + DetachBitmap() pair this used to do by
+	// hand - it adds no timeout or hang protection of its own, so the
+	// run_with_timeout() wrapper around this whole function stays required.
+	BBitmap* sourceBitmap = BTranslationUtils::GetBitmap(&file);
+	if (sourceBitmap == NULL)
 		return B_OK;
-	}
-
-	BBitmap* sourceBitmap = NULL;
-	if (sourceStream.DetachBitmap(&sourceBitmap) != B_OK
-		|| sourceBitmap == NULL) {
-		return B_OK;
-	}
 
 	BRect sourceBounds = sourceBitmap->Bounds();
 	float sourceWidth = sourceBounds.Width() + 1;
