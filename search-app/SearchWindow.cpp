@@ -43,6 +43,12 @@ static const uint32 kMsgOpenResult = 'Open';
 static const int32 kPathColumn = 0;
 static const int32 kScoreColumn = 1;
 
+// SendMessage()'s reply defaults to B_INFINITE_TIMEOUT - a stuck or
+// overloaded index_server (e.g. a long Commit() holding the CLucene lock a
+// Search() also needs) would otherwise freeze this whole window forever
+// with no way out but force-quitting it.
+static const bigtime_t kQueryReplyTimeout = 15 * 1000000;
+
 
 SearchWindow::SearchWindow()
 	:
@@ -113,10 +119,13 @@ SearchWindow::_RunSearch()
 	query.AddString("query", queryString);
 
 	BMessage reply;
-	status_t sendStatus = indexServer.SendMessage(&query, &reply);
+	status_t sendStatus = indexServer.SendMessage(&query, &reply,
+		B_INFINITE_TIMEOUT, kQueryReplyTimeout);
 	STRACE("SendMessage status = %s\n", strerror(sendStatus));
 	if (sendStatus != B_OK) {
-		fStatusView->SetText(B_TRANSLATE("Could not reach index_server."));
+		fStatusView->SetText(sendStatus == B_TIMED_OUT
+			? B_TRANSLATE("index_server did not answer in time.")
+			: B_TRANSLATE("Could not reach index_server."));
 		return;
 	}
 
