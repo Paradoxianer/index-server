@@ -63,6 +63,13 @@ changes in the window); "Defaults" resets to the built-in defaults above.
 Changes take effect immediately - no separate "Apply" step, and no restart
 needed.
 
+**Reindex Everything** forces a complete reindex of every watched
+volume from scratch, instead of only picking up what's changed since
+the last run. Mainly for recovering after an analyser's own external
+index was wiped or corrupted in a way its normal incremental progress
+tracking can't detect on its own - not something you'd need in normal
+use.
+
 There's currently no per-folder analyser assignment (e.g. "index audio
 tags here, but not full text") - it's all-or-nothing per volume. See issue
 #7 if you need that.
@@ -95,6 +102,13 @@ Double-click a result to open it with its default application.
 - No per-folder analyser assignment yet (see above).
 - The search app has no live filter-as-you-type yet - you always need to
   submit the query explicitly.
+- Identifying and translating unrecognized file content is serialized
+  process-wide (a translator crashing or corrupting memory when called
+  concurrently was worse than the alternative - see #59, #62, #66). A
+  large batch of files in a format nothing on the system recognizes
+  (each one probing every installed translator before giving up) can
+  noticeably slow down a catch up, since they queue up one at a time
+  instead of running in parallel.
 
 ## Autostart
 
