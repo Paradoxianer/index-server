@@ -103,6 +103,15 @@ launch_daemon service definition (`data/launch/index_server`) - no need to
 launch it yourself. It runs as a background app (no Deskbar window), and
 restarts automatically if it crashes.
 
+**Install system-wide** (`pkgman install` without `-H`/`--home`). A home
+install doesn't work: the service is a system-level job (it needs to watch
+every mounted volume, not just one user's), and Haiku's system-mode
+launch_daemon never scans a user's package data for job definitions - only
+the per-session user-mode daemon does, and `launch_roster` won't find the
+job there under its usual name. There's currently no error at install time
+that says so; `launch_roster start x-vnd.haiku-index_server` just fails
+with "Name not found" (see issue #63).
+
 ## Troubleshooting
 
 - **"No volume has a full text index yet." right after a fresh
