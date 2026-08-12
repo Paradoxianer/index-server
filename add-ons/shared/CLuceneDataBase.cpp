@@ -469,17 +469,29 @@ CLuceneWriteDataBase::_AddDocumentFromFile(const char* contentPath,
 		// retrying. Document::add(Field&) stores the field by address and
 		// deletes it from Document's own destructor - not documented, but
 		// confirmed the hard way (a real crash) when these were stack
-		// allocated - so both fields must be heap allocated here.
+		// allocated - so both fields must be heap allocated here. Declared
+		// outside the try block (unlike the Field/FileReader below) so
+		// every catch clause can safely delete it regardless of how far
+		// construction got.
 		Document* document = new Document;
-		FileReader* fileReader = new FileReader(contentPath, "UTF-8");
-		Field* contentField = new Field(kContentsField, fileReader,
-			Field::STORE_NO | Field::INDEX_TOKENIZED);
-		document->add(*contentField);
-		Field* pathField = new Field(kPathField, wPath,
-			Field::STORE_YES | Field::INDEX_UNTOKENIZED);
-		document->add(*pathField);
 
 		try {
+			// The source file can vanish between being queued and being
+			// read here - renamed away by an atomic editor save (the
+			// crash this was found from: a ".xZQxHr"-style temp name),
+			// deleted by git, etc. FileReader/FileInputStream throw a
+			// raw std::ios_base::failure (not CLuceneError) when the
+			// open fails, which used to propagate straight past this
+			// function's catch and abort the whole server - widen the
+			// catch below to cover that too.
+			FileReader* fileReader = new FileReader(contentPath, "UTF-8");
+			Field* contentField = new Field(kContentsField, fileReader,
+				Field::STORE_NO | Field::INDEX_TOKENIZED);
+			document->add(*contentField);
+			Field* pathField = new Field(kPathField, wPath,
+				Field::STORE_YES | Field::INDEX_UNTOKENIZED);
+			document->add(*pathField);
+
 			fIndexWriter->addDocument(document);
 			STRACE("document added, retries: %i\n", i);
 			delete document;
@@ -494,6 +506,15 @@ CLuceneWriteDataBase::_AddDocumentFromFile(const char* contentPath,
 				status = false;
 				break;
 			}
+		} catch (std::exception &error) {
+			// Not retryable - the content is just gone - so skip this
+			// document instead of looping kCluceneTries times against
+			// the same missing file.
+			STRACE("exception building document for %s: %s\n", contentPath,
+				error.what());
+			delete document;
+			status = false;
+			break;
 		}
 	}
 
