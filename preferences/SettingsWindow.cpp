@@ -82,8 +82,14 @@ public:
 
 SettingsWindow::SettingsWindow()
 	:
+	// B_AUTO_UPDATE_SIZE_LIMITS pins the window's max size to whatever the
+	// layout currently prefers - fine for a fixed dialog, but this window
+	// has a path list that benefits from being widened to see a full path,
+	// and nothing in the layout itself wants extra width on its own to
+	// justify a larger max automatically. Leave it out and set generous
+	// explicit limits below instead.
 	BWindow(BRect(80, 80, 560, 420), B_TRANSLATE_SYSTEM_NAME("Index Server"),
-		B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS | B_ASYNCHRONOUS_CONTROLS)
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
 {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
 	_BuildAnalysersMenu(menuBar);
@@ -123,9 +129,11 @@ SettingsWindow::SettingsWindow()
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
 
+	// Always visible (never Hide()/Show()'d - see _HandleProgress()'s
+	// comment) so the rest of the window doesn't jump up and down as a
+	// catch up starts and stops.
 	fProgressBar = new BStatusBar("progress");
 	fProgressBar->SetMaxValue(100.0f);
-	fProgressBar->Hide();
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
@@ -151,6 +159,14 @@ SettingsWindow::SettingsWindow()
 				.End()
 			.End()
 		;
+
+	// The layout's own preferred width (dictated by the path column) is
+	// much narrower than anyone actually wants once real paths show up -
+	// let the user resize well past it instead of just the two buttons'
+	// combined width.
+	float minWidth, maxWidth, minHeight, maxHeight;
+	GetSizeLimits(&minWidth, &maxWidth, &minHeight, &maxHeight);
+	SetSizeLimits(minWidth, 4000, minHeight, maxHeight);
 
 	fFolderPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this), NULL,
 		B_DIRECTORY_NODE, true);
@@ -361,16 +377,18 @@ SettingsWindow::_HandleProgress(BMessage* message)
 	if (total <= 0)
 		return;
 
+	// Reset to empty rather than Hide() - hiding it (and un-hiding it
+	// again once the next run starts) made everything below it in the
+	// window jump up and down each time, which read as the whole window
+	// glitching rather than a catch up simply finishing.
 	if (current >= total) {
-		fProgressBar->Hide();
+		fProgressBar->Reset();
+		fProgressBar->SetMaxValue(100.0f);
 		return;
 	}
 
 	BString path;
 	message->FindString("path", &path);
-
-	if (fProgressBar->IsHidden())
-		fProgressBar->Show();
 
 	BString trailing;
 	trailing.SetToFormat("%ld / %ld", (long)current, (long)total);
