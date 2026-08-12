@@ -11,7 +11,9 @@
 #include <string.h>
 #include <strings.h>
 
+#include <Autolock.h>
 #include <File.h>
+#include <Locker.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
@@ -40,6 +42,14 @@ const bigtime_t kIdentifyTimeout = 5 * 1000000;
 // thread either (it processes every entry of a volume serially).
 const bigtime_t kTranslateTimeout = 30 * 1000000;
 
+// Each volume gets its own FullTextAnalyser instance running on its own
+// VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide
+// roster - concurrent Identify()/Translate() calls from two volumes at once
+// have been observed corrupting a translator's own internal state badly
+// enough to crash later in unrelated code (see #59, #62). Serialize every
+// call into it.
+static BLocker sTranslatorLock("translator lock");
+
 
 namespace {
 
@@ -57,6 +67,7 @@ status_t
 do_identify(void* data)
 {
 	identify_cookie* cookie = (identify_cookie*)data;
+	BAutolock lock(sTranslatorLock);
 	return BTranslatorRoster::Default()->Identify(cookie->source, NULL,
 		&cookie->info, 0, NULL, B_TRANSLATOR_TEXT);
 }
@@ -84,6 +95,7 @@ status_t
 do_translate(void* data)
 {
 	translate_cookie* cookie = (translate_cookie*)data;
+	BAutolock lock(sTranslatorLock);
 	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
 		cookie->destination, 'TEXT');
 }

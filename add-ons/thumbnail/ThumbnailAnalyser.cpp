@@ -11,10 +11,12 @@
 #include <string.h>
 #include <strings.h>
 
+#include <Autolock.h>
 #include <Bitmap.h>
 #include <BitmapStream.h>
 #include <DataIO.h>
 #include <File.h>
+#include <Locker.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
@@ -30,6 +32,16 @@
 // A malformed or pathological image must not stall the whole VolumeWorker
 // thread over decoding/scaling it.
 const bigtime_t kThumbnailTimeout = 15 * 1000000;
+
+// Each volume gets its own ThumbnailAnalyser instance running on its own
+// VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide
+// roster - see FullTextAnalyser.cpp's sTranslatorLock for why concurrent
+// calls into it from two volumes at once are not safe to allow (#59, #62).
+// This lock only protects ThumbnailAnalyser's own two call sites against
+// each other and against other ThumbnailAnalyser instances - it cannot
+// serialize against FullTextAnalyser's translator calls, since the two are
+// separate loaded add-on images with separate static storage.
+static BLocker sTranslatorLock("thumbnail translator lock");
 
 // Larger than Tracker's own icon sizes so a future viewer has some room,
 // small enough to stay cheap to generate and store per file.
@@ -79,7 +91,11 @@ do_create_thumbnail(void* data)
 	// Translate(B_TRANSLATOR_BITMAP) + DetachBitmap() pair this used to do by
 	// hand - it adds no timeout or hang protection of its own, so the
 	// run_with_timeout() wrapper around this whole function stays required.
-	BBitmap* sourceBitmap = BTranslationUtils::GetBitmap(&file);
+	BBitmap* sourceBitmap;
+	{
+		BAutolock lock(sTranslatorLock);
+		sourceBitmap = BTranslationUtils::GetBitmap(&file);
+	}
 	if (sourceBitmap == NULL)
 		return B_OK;
 
@@ -146,8 +162,12 @@ do_create_thumbnail(void* data)
 	// BBitmapStream(bitmap) takes ownership of destBitmap and deletes it in
 	// its own destructor - nothing else here must delete it afterwards.
 	BBitmapStream destStream(destBitmap);
-	status_t status = BTranslatorRoster::Default()->Translate(&destStream,
-		NULL, NULL, &cookie->thumbnailData, B_WEBP_FORMAT);
+	status_t status;
+	{
+		BAutolock lock(sTranslatorLock);
+		status = BTranslatorRoster::Default()->Translate(&destStream,
+			NULL, NULL, &cookie->thumbnailData, B_WEBP_FORMAT);
+	}
 
 	cookie->hasThumbnail = status == B_OK
 		&& cookie->thumbnailData.BufferLength() > 0;
