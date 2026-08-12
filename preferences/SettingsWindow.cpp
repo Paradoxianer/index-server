@@ -147,6 +147,7 @@ SettingsWindow::SettingsWindow()
 			.AddGroup(B_HORIZONTAL)
 				.AddGlue()
 				.Add(fullResetButton)
+				.AddGlue()
 				.End()
 			.End()
 		;

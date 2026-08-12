@@ -254,32 +254,26 @@ CatchUpAnalyser::_CreateProgressNotifier()
 	if (fVolume.GetName(volumeName) != B_OK)
 		strlcpy(volumeName, "?", sizeof(volumeName));
 
-	// Analysers are named after their add-on (e.g. "FullTextAnalyser").
-	// Naming them here is what lets a user actually confirm a specific
-	// analyser (e.g. AudioTagAnalyser) is really running rather than
-	// silently sitting idle - worth the length. #53 fixed the underlying
-	// problem this used to expose (the startup run routinely covered only
-	// one analyser, whichever registered first) rather than papering over
-	// it by hiding the analyser list here.
-	BString analyserNames;
-	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
-		if (i > 0)
-			analyserNames << ", ";
-		analyserNames << fFileAnalyserList.ItemAt(i)->Name();
-	}
-
+	// Used to list every covered analyser in the title (e.g. "Indexing
+	// Haiku OS (AudioTagAnalyser, ExifAnalyser, ...)") so a user could
+	// confirm a specific one was really running - but Haiku's own
+	// notification UI truncates a long title instead of wrapping it,
+	// which for six-plus analysers just showed "(AudioTagAnalys..." with
+	// no way to see the rest. Not worth the length if it can't actually
+	// be read; keep the title to just the volume.
+	//
 	// CatchUpManager only ever runs one CatchUpAnalyser at a time per
-	// volume, but consecutive runs can still cover different analyser sets
-	// (one registered after the previous run's snapshot was taken), so the
-	// identifier still needs to cover both the volume and the analyser set
-	// to not collide with an earlier run's still-fading notification.
+	// volume, so the identifier only needs to cover the volume, not the
+	// analyser set too - keeping it stable across consecutive runs (one
+	// registered after an earlier run's snapshot, a rescan request, ...)
+	// means a later run updates the same notification in place instead of
+	// its own fading out while a separate one pops up, which looked like
+	// the notification randomly disappearing and reappearing.
 	BString messageID;
-	messageID << "catchup-" << (int32)fVolume.Device() << "-"
-		<< analyserNames;
+	messageID << "catchup-" << (int32)fVolume.Device();
 
 	BString title;
-	title.SetToFormat(B_TRANSLATE("Indexing %s (%s)"), volumeName,
-		analyserNames.String());
+	title.SetToFormat(B_TRANSLATE("Indexing %s"), volumeName);
 
 	return new IndexProgressNotifier(messageID, title, volumeName, fSettings);
 }

@@ -22,9 +22,9 @@
 #define B_TRANSLATION_CONTEXT "IndexProgressNotifier"
 
 
-// Update at most once a second - once per file would make the notification
-// itself a source of load during a large catch up.
-static const bigtime_t kMinNotifyInterval = 1000000;
+// Update at most twice a second - once per file would make the
+// notification itself a source of load during a large catch up.
+static const bigtime_t kMinNotifyInterval = 500000;
 // A routine catch up after a short restart is over in a blink; only a
 // backlog large enough to actually take a while is worth popping up an OS
 // notification for (see issue #34). Observers (e.g. the Settings window)
