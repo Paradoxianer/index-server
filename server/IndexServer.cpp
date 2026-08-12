@@ -156,6 +156,7 @@ IndexServer::MessageReceived(BMessage *message)
 			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
 				maxResults = requestedMax;
 
+			bigtime_t queryStart = system_time();
 			BMessage reply(kMsgQueryReply);
 			int32 searchedVolumes = 0;
 			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
@@ -165,8 +166,13 @@ IndexServer::MessageReceived(BMessage *message)
 				volumeQuery.AddString("query", queryString);
 				volumeQuery.AddInt32("maxResults", maxResults);
 				BMessage volumeReply;
+				bigtime_t volumeStart = system_time();
 				status_t status = watcher->HandleQuery(kFullTextAnalyserName,
 					volumeQuery, volumeReply);
+				STRACE("kMsgQuery: volume device %" B_PRId32
+					" HandleQuery took %" B_PRId64 " us, status %s\n",
+					watcher->Volume().Device(), system_time() - volumeStart,
+					strerror(status));
 				if (status != B_OK)
 					continue;
 				searchedVolumes++;
@@ -181,6 +187,8 @@ IndexServer::MessageReceived(BMessage *message)
 				}
 			}
 			reply.AddInt32("searchedVolumes", searchedVolumes);
+			STRACE("kMsgQuery: total handling took %" B_PRId64 " us\n",
+				system_time() - queryStart);
 			message->SendReply(&reply);
 			break;
 		}

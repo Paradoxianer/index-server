@@ -258,7 +258,11 @@ status_t
 CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 	BMessage& reply)
 {
+	bigtime_t lockWaitStart = system_time();
 	BAutolock lock(sCLuceneLock);
+	STRACE("Search: waited %" B_PRId64 " us for sCLuceneLock\n",
+		system_time() - lockWaitStart);
+	bigtime_t searchStart = system_time();
 
 	wchar_t* wQuery = to_wchar(queryString.String());
 	if (wQuery == NULL)
@@ -326,6 +330,9 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 	if (reader != NULL)
 		reader->close();
 	delete reader;
+
+	STRACE("Search: actual search took %" B_PRId64 " us, status %d\n",
+		system_time() - searchStart, (int)status);
 
 	return status;
 }

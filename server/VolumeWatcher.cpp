@@ -264,11 +264,18 @@ status_t
 AnalyserDispatcher::HandleQuery(const BString& analyserName,
 	const BMessage& query, BMessage& reply)
 {
+	bigtime_t lockWaitStart = system_time();
 	BAutolock _(this);
+	printf("AnalyserDispatcher::HandleQuery: waited %" B_PRId64
+		" us for looper lock\n", system_time() - lockWaitStart);
 	FileAnalyser* analyser = _FindAnalyser(analyserName);
 	if (analyser == NULL)
 		return B_NAME_NOT_FOUND;
-	return analyser->HandleQuery(query, reply);
+	bigtime_t queryStart = system_time();
+	status_t status = analyser->HandleQuery(query, reply);
+	printf("AnalyserDispatcher::HandleQuery: analyser->HandleQuery took %"
+		B_PRId64 " us\n", system_time() - queryStart);
+	return status;
 }
 
 

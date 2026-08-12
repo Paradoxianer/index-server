@@ -101,9 +101,12 @@ SearchWindow::_RunSearch()
 		return;
 	}
 
+	bigtime_t t0 = system_time();
 	BMessenger indexServer(kIndexServerSignature);
-	STRACE("BMessenger(%s) IsValid=%s\n", kIndexServerSignature.String(),
-		indexServer.IsValid() ? "true" : "false");
+	bigtime_t t1 = system_time();
+	STRACE("BMessenger(%s) IsValid=%s (ctor took %" B_PRId64 " us)\n",
+		kIndexServerSignature.String(), indexServer.IsValid() ? "true" : "false",
+		t1 - t0);
 	if (!indexServer.IsValid()) {
 		fStatusView->SetText(B_TRANSLATE("index_server is not running."));
 		return;
@@ -119,8 +122,11 @@ SearchWindow::_RunSearch()
 	// whole window's message loop (repaint, Cancel, everything) along
 	// with it. The reply arrives later as a normal kMsgQueryReply message.
 	fStatusView->SetText(B_TRANSLATE("Searching…"));
+	fSearchSentTime = system_time();
 	status_t sendStatus = indexServer.SendMessage(&query, this);
-	STRACE("SendMessage status = %s\n", strerror(sendStatus));
+	bigtime_t t2 = system_time();
+	STRACE("SendMessage status = %s (send call took %" B_PRId64 " us)\n",
+		strerror(sendStatus), t2 - fSearchSentTime);
 	if (sendStatus != B_OK)
 		fStatusView->SetText(B_TRANSLATE("Could not reach index_server."));
 }
@@ -129,6 +135,9 @@ SearchWindow::_RunSearch()
 void
 SearchWindow::_HandleQueryReply(BMessage* reply)
 {
+	STRACE("reply received, round trip took %" B_PRId64 " us\n",
+		system_time() - fSearchSentTime);
+
 	entry_ref ref;
 	float score;
 	int32 count = 0;

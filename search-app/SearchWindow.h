@@ -33,6 +33,7 @@ private:
 			BTextControl*		fQueryControl;
 			BColumnListView*	fResultsView;
 			BStringView*		fStatusView;
+			bigtime_t			fSearchSentTime;
 };
 
 
