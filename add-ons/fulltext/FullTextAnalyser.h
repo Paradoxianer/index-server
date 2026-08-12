@@ -57,6 +57,10 @@ private:
 			//! has consumed it.
 			bool				_QueueTranslated(const entry_ref& ref);
 			void				_DeletePendingTempFiles();
+			//! Logs entries whose AnalyseEntry() took longer than
+			//! kSlowEntryThreshold - see its call sites' comment.
+			void				_ReportSlowEntry(const entry_ref& ref,
+									bigtime_t start, const char* outcome);
 
 			CLuceneWriteDataBase*	fWriteDataBase;
 			BPath				fDataBasePath;

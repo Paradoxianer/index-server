@@ -154,7 +154,13 @@ CLuceneWriteDataBase::Commit()
 	// process (see sCLuceneLock's declaration) - live monitoring and
 	// catch-up for the same volume each hold their own instance pointed at
 	// the same on-disk directory.
+	bigtime_t lockWaitStart = system_time();
 	BAutolock lock(sCLuceneLock);
+	bigtime_t commitStart = system_time();
+	if (commitStart - lockWaitStart > 1000000) {
+		STRACE("Commit: waited %" B_PRId64 " ms for sCLuceneLock\n",
+			(commitStart - lockWaitStart) / 1000);
+	}
 
 	// Delete any existing version of a re-added document first - CLucene
 	// has no update, so refreshing a changed file's content is a delete
@@ -193,6 +199,12 @@ CLuceneWriteDataBase::Commit()
 		fIndexWriter->close();
 		delete fIndexWriter;
 		fIndexWriter = NULL;
+	}
+
+	bigtime_t commitElapsed = system_time() - commitStart;
+	if (commitElapsed > 1000000) {
+		STRACE("Commit: took %" B_PRId64 " ms total\n",
+			commitElapsed / 1000);
 	}
 
 	return status;

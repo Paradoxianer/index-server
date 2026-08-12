@@ -42,6 +42,9 @@ const bigtime_t kIdentifyTimeout = 5 * 1000000;
 // thread either (it processes every entry of a volume serially).
 const bigtime_t kTranslateTimeout = 30 * 1000000;
 
+// See _ReportSlowEntry()'s comment.
+const bigtime_t kSlowEntryThreshold = 1 * 1000000;
+
 // Each volume gets its own FullTextAnalyser instance running on its own
 // VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide
 // roster - concurrent Identify()/Translate() calls from two volumes at once
@@ -95,9 +98,18 @@ status_t
 do_translate(void* data)
 {
 	translate_cookie* cookie = (translate_cookie*)data;
+	bigtime_t lockWaitStart = system_time();
 	BAutolock lock(sTranslatorLock);
-	return BTranslatorRoster::Default()->Translate(cookie->source, NULL, NULL,
-		cookie->destination, 'TEXT');
+	bigtime_t translateStart = system_time();
+	status_t status = BTranslatorRoster::Default()->Translate(cookie->source,
+		NULL, NULL, cookie->destination, 'TEXT');
+	bigtime_t elapsed = system_time() - translateStart;
+	if (elapsed > kSlowEntryThreshold) {
+		STRACE("slow Translate() (%" B_PRId64 " ms, waited %" B_PRId64
+			" ms for sTranslatorLock)\n", elapsed / 1000,
+			(translateStart - lockWaitStart) / 1000);
+	}
+	return status;
 }
 
 
@@ -151,19 +163,48 @@ FullTextAnalyser::InitCheck()
 void
 FullTextAnalyser::AnalyseEntry(const entry_ref& ref)
 {
-	if (!_InterestingEntry(ref))
+	bigtime_t start = system_time();
+
+	if (!_InterestingEntry(ref)) {
+		_ReportSlowEntry(ref, start, "not interesting");
 		return;
+	}
 
 	//STRACE("FullTextAnalyser AnalyseEntry: %s %s\n", ref.name, path.Path());
 	if (_IsPlainText(ref)) {
 		fWriteDataBase->AddDocument(ref);
 	} else if (!_QueueTranslated(ref)) {
+		_ReportSlowEntry(ref, start, "translate failed");
 		return;
 	}
+
+	_ReportSlowEntry(ref, start, "indexed");
 
 	fNUncommited++;
 	if (fNUncommited > 100)
 		LastEntry();
+}
+
+
+// A slow individual entry - waiting on kTranslateTimeout, kIdentifyTimeout,
+// sTranslatorLock, or the shared CLucene write lock, all of which can each
+// individually take several seconds under load - delays every Progress()
+// call after it by however long it took, since AnalyseEntry() is called
+// synchronously once per entry from CatchUpAnalyser::_CatchUp()'s loop. If
+// that gap outlasts the progress notification's own refresh window, the
+// notification just disappears until the next entry's update arrives -
+// looks like it randomly vanishing, but is really this. Logging only the
+// slow ones (instead of timing every entry unconditionally) keeps this from
+// flooding the log during a large, otherwise unremarkable catch up.
+void
+FullTextAnalyser::_ReportSlowEntry(const entry_ref& ref, bigtime_t start,
+	const char* outcome)
+{
+	bigtime_t elapsed = system_time() - start;
+	if (elapsed > kSlowEntryThreshold) {
+		STRACE("slow entry (%" B_PRId64 " ms, %s): %s\n",
+			elapsed / 1000, outcome, ref.name);
+	}
 }
 
 
