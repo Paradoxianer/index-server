@@ -156,7 +156,7 @@ IndexServer::MessageReceived(BMessage *message)
 			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
 				maxResults = requestedMax;
 
-			BMessage reply;
+			BMessage reply(kMsgQueryReply);
 			int32 searchedVolumes = 0;
 			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
 				VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);

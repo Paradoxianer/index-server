@@ -87,9 +87,17 @@ const uint32 kDisableAddOn = 'DisA';
 
 //! Sent to the index_server BApplication to run a content search; carries
 //! "query" (BString) and optionally "maxResults" (int32, default 100).
-//! Answered via BMessage::SendReply() with repeated "refs" (entry_ref) and
-//! "scores" (float, same order) fields, plus "searchedVolumes" (int32).
+//! Send this asynchronously with a replyTo handler (not the synchronous
+//! two-way SendMessage()) - a search can take a while if it has to wait
+//! for a CLucene lock held by an in-progress Commit(), and a caller
+//! blocked waiting for the reply blocks its own window's message loop
+//! for that whole time. Answered via BMessage::SendReply() with "what"
+//! set to kMsgQueryReply and repeated "refs" (entry_ref) and "scores"
+//! (float, same order) fields, plus "searchedVolumes" (int32).
 const uint32 kMsgQuery = 'ISQu';
+
+//! "what" of kMsgQuery's reply - see kMsgQuery.
+const uint32 kMsgQueryReply = 'ISQR';
 
 //! Name of the analyser add-on that answers kMsgQuery (matches the add-on
 //! binary's own file name, which FileAnalyser::Name() is set from - see

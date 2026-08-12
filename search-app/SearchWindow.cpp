@@ -43,12 +43,6 @@ static const uint32 kMsgOpenResult = 'Open';
 static const int32 kPathColumn = 0;
 static const int32 kScoreColumn = 1;
 
-// SendMessage()'s reply defaults to B_INFINITE_TIMEOUT - a stuck or
-// overloaded index_server (e.g. a long Commit() holding the CLucene lock a
-// Search() also needs) would otherwise freeze this whole window forever
-// with no way out but force-quitting it.
-static const bigtime_t kQueryReplyTimeout = 15 * 1000000;
-
 
 SearchWindow::SearchWindow()
 	:
@@ -118,22 +112,28 @@ SearchWindow::_RunSearch()
 	BMessage query(kMsgQuery);
 	query.AddString("query", queryString);
 
-	BMessage reply;
-	status_t sendStatus = indexServer.SendMessage(&query, &reply,
-		B_INFINITE_TIMEOUT, kQueryReplyTimeout);
+	// Sent asynchronously (replyTo = this window, not the two-way
+	// SendMessage(message, &reply) that waits right here) - a search can
+	// take a while if it has to wait for a CLucene lock an in-progress
+	// Commit() is holding, and blocking this thread for that blocks the
+	// whole window's message loop (repaint, Cancel, everything) along
+	// with it. The reply arrives later as a normal kMsgQueryReply message.
+	fStatusView->SetText(B_TRANSLATE("Searching…"));
+	status_t sendStatus = indexServer.SendMessage(&query, this);
 	STRACE("SendMessage status = %s\n", strerror(sendStatus));
-	if (sendStatus != B_OK) {
-		fStatusView->SetText(sendStatus == B_TIMED_OUT
-			? B_TRANSLATE("index_server did not answer in time.")
-			: B_TRANSLATE("Could not reach index_server."));
-		return;
-	}
+	if (sendStatus != B_OK)
+		fStatusView->SetText(B_TRANSLATE("Could not reach index_server."));
+}
 
+
+void
+SearchWindow::_HandleQueryReply(BMessage* reply)
+{
 	entry_ref ref;
 	float score;
 	int32 count = 0;
-	for (int32 i = 0; reply.FindRef("refs", i, &ref) == B_OK; i++) {
-		reply.FindFloat("scores", i, &score);
+	for (int32 i = 0; reply->FindRef("refs", i, &ref) == B_OK; i++) {
+		reply->FindFloat("scores", i, &score);
 
 		BPath path(&ref);
 		STRACE("result %ld: %s (score %.3f)\n", (long)i, path.Path(), score);
@@ -147,7 +147,7 @@ SearchWindow::_RunSearch()
 	}
 
 	int32 searchedVolumes = 0;
-	reply.FindInt32("searchedVolumes", &searchedVolumes);
+	reply->FindInt32("searchedVolumes", &searchedVolumes);
 	STRACE("count=%ld searchedVolumes=%ld\n", (long)count,
 		(long)searchedVolumes);
 
@@ -191,6 +191,10 @@ SearchWindow::MessageReceived(BMessage* message)
 
 		case kMsgOpenResult:
 			_OpenSelected();
+			break;
+
+		case kMsgQueryReply:
+			_HandleQueryReply(message);
 			break;
 
 		default:

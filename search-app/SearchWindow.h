@@ -27,6 +27,7 @@ public:
 
 private:
 			void				_RunSearch();
+			void				_HandleQueryReply(BMessage* reply);
 			void				_OpenSelected();
 
 			BTextControl*		fQueryControl;
