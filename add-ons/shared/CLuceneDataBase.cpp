@@ -11,7 +11,10 @@
 
 #include <new>
 
-#include <Autolock.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+
 #include <Directory.h>
 #include <Entry.h>
 #include <UnicodeChar.h>
@@ -45,7 +48,46 @@ const uint8 kCluceneTries = 10;
 const int32 kMaxFieldLength = 1000000;
 
 
-BLocker CLuceneWriteDataBase::sCLuceneLock("CLucene index lock");
+namespace {
+
+
+// MailAnalyser and FullTextAnalyser both point their CLuceneWriteDataBase
+// at the same on-disk directory (same kFullTextDirectory constant, defined
+// separately in each) - but they're two separately loaded add-on images,
+// each with its own copy of any static/in-process lock (a BLocker used to
+// live here, guarding only against races within one image's own instances,
+// e.g. FullTextAnalyser's live vs. catch-up threads - it never actually
+// serialized FullTextAnalyser against MailAnalyser, see #66). flock() is
+// enforced by the kernel on the underlying inode, not by process memory,
+// so a lock file inside the shared directory actually closes that gap
+// regardless of which image - or even which process - is asking.
+class CLuceneFileLock {
+public:
+	CLuceneFileLock(const BPath& dataBasePath)
+		:
+		fFd(-1)
+	{
+		BPath lockPath(dataBasePath);
+		lockPath.Append("index_server.lock");
+		fFd = open(lockPath.Path(), O_CREAT | O_RDWR, 0644);
+		if (fFd >= 0)
+			flock(fFd, LOCK_EX);
+	}
+
+	~CLuceneFileLock()
+	{
+		if (fFd >= 0) {
+			flock(fFd, LOCK_UN);
+			close(fFd);
+		}
+	}
+
+private:
+	int	fFd;
+};
+
+
+}	// namespace
 
 
 // mbstowcs() depends on the process's current locale to decode multi-byte
@@ -150,15 +192,15 @@ CLuceneWriteDataBase::Commit()
 		return B_OK;
 	STRACE("Commit\n");
 
-	// Serializes against every other CLuceneWriteDataBase instance in this
-	// process (see sCLuceneLock's declaration) - live monitoring and
-	// catch-up for the same volume each hold their own instance pointed at
-	// the same on-disk directory.
+	// Serializes against every other CLuceneWriteDataBase instance pointed
+	// at the same on-disk directory - live monitoring, catch-up, and even
+	// MailAnalyser's own instances all qualify (see CLuceneFileLock's
+	// comment).
 	bigtime_t lockWaitStart = system_time();
-	BAutolock lock(sCLuceneLock);
+	CLuceneFileLock lock(fDataBasePath);
 	bigtime_t commitStart = system_time();
 	if (commitStart - lockWaitStart > 1000000) {
-		STRACE("Commit: waited %" B_PRId64 " ms for sCLuceneLock\n",
+		STRACE("Commit: waited %" B_PRId64 " ms for the CLucene file lock\n",
 			(commitStart - lockWaitStart) / 1000);
 	}
 
@@ -218,7 +260,7 @@ CLuceneWriteDataBase::AddDocumentWithText(const entry_ref& ref,
 	STRACE("AddDocumentWithText %s (%ld bytes)\n", ref.name,
 		(long)text.Length());
 
-	BAutolock lock(sCLuceneLock);
+	CLuceneFileLock lock(fDataBasePath);
 
 	std::vector<entry_ref> single;
 	single.push_back(ref);
@@ -271,8 +313,8 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 	BMessage& reply)
 {
 	bigtime_t lockWaitStart = system_time();
-	BAutolock lock(sCLuceneLock);
-	STRACE("Search: waited %" B_PRId64 " us for sCLuceneLock\n",
+	CLuceneFileLock lock(fDataBasePath);
+	STRACE("Search: waited %" B_PRId64 " us for the CLucene file lock\n",
 		system_time() - lockWaitStart);
 	bigtime_t searchStart = system_time();
 
@@ -353,11 +395,11 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 IndexWriter*
 CLuceneWriteDataBase::_OpenIndexWriter()
 {
-	// sCLuceneLock already guarantees no other thread of this process is
-	// touching this directory here, and this process is the only writer
-	// this index ever has - so a lock found here can only be stale, left
-	// behind by a previous instance that didn't exit cleanly (crash, kill).
-	// Left alone, such a lock blocks every future write forever.
+	// The CLuceneFileLock caller already holds guarantees nothing else is
+	// touching this directory here - so a lock found here can only be
+	// stale, left behind by a previous instance that didn't exit cleanly
+	// (crash, kill). Left alone, such a lock blocks every future write
+	// forever.
 	if (IndexReader::isLocked(fDataBasePath.Path())) {
 		STRACE("stale write lock found, clearing %s\n", fDataBasePath.Path());
 		IndexReader::unlock(fDataBasePath.Path());

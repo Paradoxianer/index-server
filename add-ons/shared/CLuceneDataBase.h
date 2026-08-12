@@ -11,7 +11,6 @@
 
 #include <vector>
 
-#include <Locker.h>
 #include <Message.h>
 #include <Path.h>
 #include <String.h>
@@ -65,9 +64,9 @@ public:
 
 			//! Runs a free-text query against the on-disk index and
 			//! appends up to maxResults matches to \a reply as repeated
-			//! "refs"/"scores" fields (same order). Shares sCLuceneLock
-			//! with the write path, so a search can't tear down a commit
-			//! that's replacing segment files underneath it.
+			//! "refs"/"scores" fields (same order). Shares the CLucene
+			//! file lock with the write path, so a search can't tear down
+			//! a commit that's replacing segment files underneath it.
 			status_t			Search(const BString& queryString,
 								int32 maxResults, BMessage& reply);
 
@@ -101,18 +100,6 @@ private:
 			StandardAnalyzer	fStandardAnalyzer;
 
 			IndexWriter*		fIndexWriter;
-
-			// Live monitoring and catch-up each run their own
-			// FullTextAnalyser/CLuceneWriteDataBase instance for the same
-			// volume, on separate threads, both pointed at the same
-			// on-disk CLucene directory. CLucene 2.x's write.lock only
-			// guards against two writers; a reader from one instance
-			// racing a commit from the other can still tear down
-			// mid-replaced segment files, which throws out of a CLucene
-			// destructor and aborts the process (C++11 destructors are
-			// implicitly noexcept). One process-wide lock around all
-			// actual CLucene I/O closes that race.
-			static	BLocker		sCLuceneLock;
 };
 
 #endif
