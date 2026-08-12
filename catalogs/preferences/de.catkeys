@@ -1,6 +1,16 @@
 1	german	x-vnd.Haiku-IndexServerSettings	3151987872
 Analysers	SettingsWindow		Analyser
 Only the listed folders	SettingsWindow		Nur die aufgelisteten Ordner
+Reindex Everything	SettingsWindow		Alles neu indizieren
+Reindex everything	SettingsWindow		Alles neu indizieren
+Cancel	SettingsWindow		Abbrechen
+Reindex requested…	SettingsWindow		Neuindizierung angefordert…
+Reindex Everything…	SettingsWindow		Alles neu indizieren…
+This resets every analyser's progress on every watched volume and reindexes everything from scratch. Depending on how much content there is, this can take a while.\n\nContinue?	SettingsWindow		Dies setzt den Fortschritt aller Analyser auf jedem überwachten Volume zurück und indiziert alles von Grund auf neu. Je nach Datenmenge kann das eine Weile dauern.\n\nFortfahren?
+Indexing…	SettingsWindow		Indiziere…
+Server not reachable	SettingsWindow		Server nicht erreichbar
+Server not running	SettingsWindow		Server läuft nicht
+Running	SettingsWindow		Läuft
 Defaults	SettingsWindow		Standardwerte
 Index Server	System name		Index Server
 All folders except the listed ones	SettingsWindow		Alle Ordner außer den aufgelisteten
