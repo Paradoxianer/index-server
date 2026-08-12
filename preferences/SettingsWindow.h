@@ -38,6 +38,7 @@ private:
 			void				_AddRefs(BMessage* message);
 			void				_RemoveSelectedPaths();
 			void				_UpdateStatus();
+			void				_HandleStatusReply(BMessage* reply);
 			void				_HandleProgress(BMessage* message);
 
 			IndexServerSettings	fSettings;

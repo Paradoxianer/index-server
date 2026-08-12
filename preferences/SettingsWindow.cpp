@@ -283,15 +283,24 @@ SettingsWindow::_UpdateStatus()
 		return;
 	}
 
+	// Sent asynchronously (replyTo = this window) - this runs once from
+	// the constructor, before Show(), and every kStatusPollInterval after
+	// that. The old two-way SendMessage(message, &reply) blocked whatever
+	// called this for as long as index_server took to answer - including,
+	// the very first time, the constructor itself, which meant the window
+	// never got shown at all if index_server was slow to respond right
+	// then (e.g. waiting on a CLucene lock a Commit() was holding).
 	BMessage query(kMsgGetStatus);
-	BMessage reply;
-	if (indexServer.SendMessage(&query, &reply) != B_OK) {
+	if (indexServer.SendMessage(&query, this) != B_OK)
 		fStatusView->SetText(B_TRANSLATE("Server not reachable"));
-		return;
-	}
+}
 
+
+void
+SettingsWindow::_HandleStatusReply(BMessage* reply)
+{
 	bool indexing = false;
-	reply.FindBool("indexing", &indexing);
+	reply->FindBool("indexing", &indexing);
 	fStatusView->SetText(indexing
 		? B_TRANSLATE("Indexing" B_UTF8_ELLIPSIS)
 		: B_TRANSLATE("Running"));
@@ -336,6 +345,10 @@ SettingsWindow::MessageReceived(BMessage* message)
 
 		case kMsgIndexProgress:
 			_HandleProgress(message);
+			break;
+
+		case kMsgGetStatusReply:
+			_HandleStatusReply(message);
 			break;
 
 		case kMsgModeChanged:

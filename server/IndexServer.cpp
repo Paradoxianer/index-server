@@ -195,7 +195,7 @@ IndexServer::MessageReceived(BMessage *message)
 				}
 			}
 
-			BMessage reply;
+			BMessage reply(kMsgGetStatusReply);
 			reply.AddBool("indexing", indexing);
 			message->SendReply(&reply);
 			break;

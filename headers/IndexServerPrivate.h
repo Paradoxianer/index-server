@@ -105,10 +105,15 @@ const uint32 kMsgQueryReply = 'ISQR';
 const BString kFullTextAnalyserName = "FullTextAnalyser";
 
 //! Sent to the index_server BApplication to ask whether it's currently
-//! idle or catching up/indexing. No fields needed in the request.
-//! Answered via BMessage::SendReply() with "indexing" (bool) - true if any
-//! watched volume has a catch up or live analysis run in progress.
+//! idle or catching up/indexing. No fields needed in the request. Send
+//! this asynchronously with a replyTo handler - see kMsgQuery's comment
+//! for why. Answered via BMessage::SendReply() with "what" set to
+//! kMsgGetStatusReply and "indexing" (bool) - true if any watched volume
+//! has a catch up or live analysis run in progress.
 const uint32 kMsgGetStatus = 'ISSt';
+
+//! "what" of kMsgGetStatus's reply - see kMsgGetStatus.
+const uint32 kMsgGetStatusReply = 'ISSR';
 
 //! Sent to the index_server BApplication to subscribe to live catch up
 //! progress pushes (see kMsgIndexProgress below); carries "observer"
