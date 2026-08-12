@@ -47,6 +47,10 @@ const uint8 kCluceneTries = 10;
 // spirit as FullTextAnalyser's kMaxIndexableFileSize.
 const int32 kMaxFieldLength = 1000000;
 
+// See FullTextAnalyser.cpp's kSlowEntryThreshold - same reasoning, kept in
+// sync deliberately.
+const bigtime_t kSlowThreshold = 200 * 1000;
+
 
 namespace {
 
@@ -199,7 +203,7 @@ CLuceneWriteDataBase::Commit()
 	bigtime_t lockWaitStart = system_time();
 	CLuceneFileLock lock(fDataBasePath);
 	bigtime_t commitStart = system_time();
-	if (commitStart - lockWaitStart > 1000000) {
+	if (commitStart - lockWaitStart > kSlowThreshold) {
 		STRACE("Commit: waited %" B_PRId64 " ms for the CLucene file lock\n",
 			(commitStart - lockWaitStart) / 1000);
 	}
@@ -244,7 +248,7 @@ CLuceneWriteDataBase::Commit()
 	}
 
 	bigtime_t commitElapsed = system_time() - commitStart;
-	if (commitElapsed > 1000000) {
+	if (commitElapsed > kSlowThreshold) {
 		STRACE("Commit: took %" B_PRId64 " ms total\n",
 			commitElapsed / 1000);
 	}

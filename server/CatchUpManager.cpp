@@ -110,12 +110,12 @@ CatchUpAnalyser::MessageReceived(BMessage *message)
 
 
 void
-CatchUpAnalyser::StartAnalysing()
+CatchUpAnalyser::StartAnalysing(bool immediate)
 {
 	Run();
 	BMessage message(kCatchUp);
 	BMessageRunner::StartSending(BMessenger(this), &message,
-		kCatchUpStartDelay, 1);
+		immediate ? 0 : kCatchUpStartDelay, 1);
 }
 
 
@@ -128,8 +128,19 @@ CatchUpAnalyser::AnalyseEntry(const entry_ref& ref)
 		FileAnalyser* analyser = fFileAnalyserList.ItemAt(i);
 		const analyser_settings& settings = analyser->CachedSettings();
 		if (settings.syncPosition / kSecond >= fStart
-			&& settings.watchingStart / kSecond <= fEnd)
+			&& settings.watchingStart / kSecond <= fEnd) {
+			bigtime_t start = system_time();
 			analyser->AnalyseEntry(ref);
+			bigtime_t elapsed = system_time() - start;
+			// See AnalyserDispatcher::AnalyseEntry()'s identical check -
+			// this is CatchUpAnalyser's own override, used during an
+			// actual catch up run instead of the base class version, so
+			// it needs the same instrumentation independently.
+			if (elapsed > 200 * 1000) {
+				printf("slow analyser (%" B_PRId64 " ms): %s on %s\n",
+					elapsed / 1000, analyser->Name().String(), ref.name);
+			}
+		}
 	}
 }
 
@@ -297,7 +308,8 @@ CatchUpManager::CatchUpManager(const BVolume& volume,
 	:
 	fVolume(volume),
 	fSettings(settings),
-	fCatchUpPending(false)
+	fCatchUpPending(false),
+	fPendingImmediate(false)
 {
 
 }
@@ -334,7 +346,9 @@ CatchUpManager::MessageReceived(BMessage *message)
 				// already but missed this run's snapshot, so give it its
 				// own run now instead of leaving it stranded.
 				fCatchUpPending = false;
-				CatchUp();
+				bool immediate = fPendingImmediate;
+				fPendingImmediate = false;
+				CatchUp(immediate);
 			}
 		break;
 
@@ -370,7 +384,7 @@ CatchUpManager::RemoveAnalyser(const BString& name)
 
 
 bool
-CatchUpManager::CatchUp()
+CatchUpManager::CatchUp(bool immediate)
 {
 	STRACE("CatchUpManager::CatchUp()\n");
 	if (fCatchUpAnalyserList.CountItems() > 0) {
@@ -379,6 +393,7 @@ CatchUpManager::CatchUp()
 		// arriving mid catch-up); MessageReceived() starts a follow-up run
 		// automatically once it does.
 		fCatchUpPending = true;
+		fPendingImmediate |= immediate;
 		return false;
 	}
 	if (fRegisteredAnalysers.empty())
@@ -395,13 +410,13 @@ CatchUpManager::CatchUp()
 		return false;
 	}
 
-	catchUpAnalyser->StartAnalysing();
+	catchUpAnalyser->StartAnalysing(immediate);
 	return true;
 }
 
 
 bool
-CatchUpManager::FullReset()
+CatchUpManager::FullReset(bool immediate)
 {
 	// PopulateCatchUp() takes the *maximum* sync position across all
 	// registered analysers as the run's start - an analyser left behind
@@ -415,7 +430,7 @@ CatchUpManager::FullReset()
 		fRegisteredAnalysers[i]->SetSyncPosition(0);
 		fRegisteredAnalysers[i]->WriteSettings();
 	}
-	return CatchUp();
+	return CatchUp(immediate);
 }
 
 

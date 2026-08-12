@@ -307,6 +307,13 @@ SettingsWindow::_RequestFullReset()
 		fStatusView->SetText(B_TRANSLATE("Server not running"));
 		return;
 	}
+	// Otherwise nothing visibly happens until the catch up's own progress
+	// notification shows up - which used to take a while even after the
+	// server received this, since the catch up itself only starts skipping
+	// kCatchUpStartDelay now that this is marked "immediate" server-side
+	// (see VolumeWatcher::RequestFullReset()), but the message send and
+	// dispatch alone still isn't instant.
+	fStatusView->SetText(B_TRANSLATE("Reindex requested" B_UTF8_ELLIPSIS));
 	indexServer.SendMessage(kMsgRequestFullReset);
 }
 

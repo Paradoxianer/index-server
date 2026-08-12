@@ -171,8 +171,21 @@ AnalyserDispatcher::AnalyseEntry(const entry_ref& ref)
 {
 	BAutolock _(this);
 	_EnsureMimeType(ref);
-	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)
-		fFileAnalyserList.ItemAt(i)->AnalyseEntry(ref);
+	for (int i = 0; i < fFileAnalyserList.CountItems(); i++) {
+		FileAnalyser* analyser = fFileAnalyserList.ItemAt(i);
+		bigtime_t start = system_time();
+		analyser->AnalyseEntry(ref);
+		bigtime_t elapsed = system_time() - start;
+		// See FullTextAnalyser.cpp's kSlowEntryThreshold - same reasoning.
+		// This wraps every analyser's own AnalyseEntry(), not just
+		// FullTextAnalyser's - a slow AudioTagAnalyser/ExifAnalyser/
+		// MediaKitAnalyser/ThumbnailAnalyser call on some entry would
+		// otherwise never show up in FullTextAnalyser's own timing at all.
+		if (elapsed > 200 * 1000) {
+			printf("slow analyser (%" B_PRId64 " ms): %s on %s\n",
+				elapsed / 1000, analyser->Name().String(), ref.name);
+		}
+	}
 }
 
 
@@ -619,7 +632,11 @@ VolumeWatcher::RequestFullReset()
 {
 	BAutolock _(this);
 	printf("VolumeWatcher::RequestFullReset\n");
-	fCatchUpManager.FullReset();
+	// immediate: this is always a user explicitly asking for it right now
+	// (the settings preflet's "Reindex Everything" button), unlike a plain
+	// CatchUp() following naturally from add-on/volume registration at
+	// startup - kCatchUpStartDelay's whole reason to exist doesn't apply.
+	fCatchUpManager.FullReset(true);
 }
 
 

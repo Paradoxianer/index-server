@@ -42,8 +42,11 @@ const bigtime_t kIdentifyTimeout = 5 * 1000000;
 // thread either (it processes every entry of a volume serially).
 const bigtime_t kTranslateTimeout = 30 * 1000000;
 
-// See _ReportSlowEntry()'s comment.
-const bigtime_t kSlowEntryThreshold = 1 * 1000000;
+// See _ReportSlowEntry()'s comment. Deliberately well under a second - a
+// stretch of many small files each individually taking a few hundred ms
+// (never crossing a 1s bar on their own) still adds up to the same
+// notification-refresh gap as one genuinely slow file.
+const bigtime_t kSlowEntryThreshold = 200 * 1000;
 
 // Each volume gets its own FullTextAnalyser instance running on its own
 // VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide

@@ -35,7 +35,11 @@ public:
 									IndexServerSettings* settings);
 
 			void				MessageReceived(BMessage *message);
-			void				StartAnalysing();
+			//! immediate skips kCatchUpStartDelay - for a run the user
+			//! explicitly asked for right now (a rescan/full reset request),
+			//! as opposed to one following naturally from add-on/volume
+			//! registration at startup, which the delay exists for.
+			void				StartAnalysing(bool immediate = false);
 
 			//! Called by CatchUpManager::PopulateCatchUp(), right before
 			//! the delayed kCatchUp message fires - see its own comment
@@ -84,14 +88,17 @@ public:
 			//! marks a catch up as pending: it starts automatically as
 			//! soon as the current run finishes, so a registration or
 			//! rescan request that arrives mid-run is never silently
-			//! dropped.
-			bool				CatchUp();
+			//! dropped. immediate skips kCatchUpStartDelay (see
+			//! StartAnalysing()) - if a run is already pending and this
+			//! one asks for immediate, that preference carries over to
+			//! the deferred run too.
+			bool				CatchUp(bool immediate = false);
 			//! Resets every registered analyser's sync position back to
 			//! the start and calls CatchUp() - unlike a normal CatchUp()
 			//! alone, this forces every one of them to be reindexed from
 			//! scratch rather than just picking up genuinely new changes
 			//! since their last sync position. See kMsgRequestFullReset.
-			bool				FullReset();
+			bool				FullReset(bool immediate = false);
 			//! Stop all catch up threads.
 			void				Stop();
 
@@ -121,6 +128,12 @@ private:
 			std::vector<BReference<AnalyserSettings> >	fRegisteredAnalysers;
 			CatchUpAnalyserList	fCatchUpAnalyserList;
 			bool				fCatchUpPending;
+			//! Whether the pending run (above) should skip
+			//! kCatchUpStartDelay once it actually starts - sticky once
+			//! set, since a second CatchUp(true) arriving while one's
+			//! already pending shouldn't be forgotten just because the
+			//! first one that set fCatchUpPending didn't ask for it.
+			bool				fPendingImmediate;
 };
 
 #endif
