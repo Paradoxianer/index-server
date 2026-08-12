@@ -43,11 +43,17 @@ path_is_or_is_under(const BString& path, const BString& prefix)
 
 /*! Where per-volume analyser data (e.g. the CLucene index) lives for
 \a volume. Packagefs reserves the boot volume's top level for "system",
-"home" etc., so a bare "index_server" folder there doesn't belong; use the
-regenerable-data location Haiku already provides instead. Other volumes
-have no such system-wide location to hang per-volume data off of, so it
-still has to sit at that volume's own root - but hidden (dot-prefixed),
-not as a folder Tracker shows by default. */
+"home" etc., so a bare "index_server" folder there doesn't belong; use
+the settings location Haiku already provides instead - not the cache
+directory (tried first, see #67): "cache" means the OS is free to clear
+it at any time with no warning, which is a bad fit for a CLucene index
+that can take hours to rebuild from scratch, and AnalyserSettings
+already keeps each analyser's sync position in exactly this settings
+location anyway (see AnalyserSettings::ReadSettings()), so this keeps
+both kinds of persistent per-analyser state together. Other volumes have
+no such system-wide location to hang per-volume data off of, so it still
+has to sit at that volume's own root - but hidden (dot-prefixed), not as
+a folder Tracker shows by default. */
 inline BPath
 volume_index_server_directory(const BVolume& volume)
 {
@@ -56,7 +62,7 @@ volume_index_server_directory(const BVolume& volume)
 
 	BPath path;
 	if (volume == bootVolume) {
-		find_directory(B_SYSTEM_CACHE_DIRECTORY, &path);
+		find_directory(B_USER_SETTINGS_DIRECTORY, &path);
 		path.Append(kIndexServerDirectory.String());
 	} else {
 		BDirectory rootDir;
