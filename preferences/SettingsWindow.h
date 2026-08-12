@@ -37,6 +37,7 @@ private:
 			void				_ReloadPathList();
 			void				_AddRefs(BMessage* message);
 			void				_RemoveSelectedPaths();
+			void				_RequestFullReset();
 			void				_UpdateStatus();
 			void				_HandleStatusReply(BMessage* reply);
 			void				_HandleProgress(BMessage* message);

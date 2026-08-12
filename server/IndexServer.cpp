@@ -209,6 +209,13 @@ IndexServer::MessageReceived(BMessage *message)
 			break;
 		}
 
+		case kMsgRequestFullReset:
+		{
+			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++)
+				fVolumeWatcherList.ItemAt(i)->RequestFullReset();
+			break;
+		}
+
 		case kMsgRegisterProgressObserver:
 		{
 			BMessenger observer;

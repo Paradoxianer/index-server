@@ -115,6 +115,18 @@ const uint32 kMsgGetStatus = 'ISSt';
 //! "what" of kMsgGetStatus's reply - see kMsgGetStatus.
 const uint32 kMsgGetStatusReply = 'ISSR';
 
+//! Sent to the index_server BApplication to force a complete reindex on
+//! every watched volume: resets every registered analyser's sync
+//! position back to the start and re-runs catch up from scratch. Unlike
+//! a normal catch up (which only picks up genuinely new changes since
+//! each analyser's own last sync position), this is for recovering after
+//! an analyser's own external index was wiped or corrupted in a way the
+//! sync position alone doesn't reflect (e.g. FullTextAnalyser's CLucene
+//! data directory) - the sync position would otherwise claim old content
+//! is already covered when nothing on disk actually backs that anymore.
+//! No fields needed in the request; no reply is sent.
+const uint32 kMsgRequestFullReset = 'ISFR';
+
 //! Sent to the index_server BApplication to subscribe to live catch up
 //! progress pushes (see kMsgIndexProgress below); carries "observer"
 //! (BMessenger) - the specific handler to push updates to, not just the

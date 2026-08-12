@@ -614,6 +614,15 @@ VolumeWatcher::RequestRescan(const BString& name)
 }
 
 
+void
+VolumeWatcher::RequestFullReset()
+{
+	BAutolock _(this);
+	printf("VolumeWatcher::RequestFullReset\n");
+	fCatchUpManager.FullReset();
+}
+
+
 status_t
 VolumeWatcher::HandleQuery(const BString& analyserName,
 	const BMessage& query, BMessage& reply)

@@ -142,6 +142,10 @@ public:
 			//! volume; no-ops if one is already in progress. See
 			//! FileAnalyser::RequestRescan().
 			void				RequestRescan(const BString& name);
+			//! Resets every registered analyser's sync position on this
+			//! volume and re-runs catch up from scratch - see
+			//! CatchUpManager::FullReset() and kMsgRequestFullReset.
+			void				RequestFullReset();
 
 			//! thread safe
 			status_t		HandleQuery(const BString& analyserName,

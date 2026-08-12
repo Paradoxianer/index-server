@@ -9,6 +9,7 @@
 
 #include <vector>
 
+#include <Alert.h>
 #include <Application.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -45,6 +46,7 @@ static const uint32 kMsgDefaults = 'Dflt';
 static const uint32 kMsgRevert = 'Rvrt';
 static const uint32 kMsgToggleAnalyser = 'TgAn';
 static const uint32 kMsgUpdateStatus = 'UpSt';
+static const uint32 kMsgFullReset = 'FRst';
 
 static const int32 kPathColumn = 0;
 
@@ -110,6 +112,13 @@ SettingsWindow::SettingsWindow()
 		new BMessage(kMsgDefaults));
 	BButton* revertButton = new BButton("revert", B_TRANSLATE("Revert"),
 		new BMessage(kMsgRevert));
+	// For recovering after an analyser's own external index was wiped or
+	// corrupted (e.g. FullTextAnalyser's CLucene data) in a way the normal
+	// incremental sync position can't detect on its own - see #51 and
+	// kMsgRequestFullReset's comment.
+	BButton* fullResetButton = new BButton("full reset",
+		B_TRANSLATE("Reindex Everything" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgFullReset));
 
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
@@ -134,6 +143,10 @@ SettingsWindow::SettingsWindow()
 				.AddGlue()
 				.Add(defaultsButton)
 				.Add(revertButton)
+				.End()
+			.AddGroup(B_HORIZONTAL)
+				.AddGlue()
+				.Add(fullResetButton)
 				.End()
 			.End()
 		;
@@ -275,6 +288,29 @@ SettingsWindow::_RemoveSelectedPaths()
 
 
 void
+SettingsWindow::_RequestFullReset()
+{
+	BAlert* alert = new BAlert(B_TRANSLATE("Reindex everything"),
+		B_TRANSLATE("This resets every analyser's progress on every "
+			"watched volume and reindexes everything from scratch. "
+			"Depending on how much content there is, this can take a "
+			"while.\n\nContinue?"),
+		B_TRANSLATE("Cancel"), B_TRANSLATE("Reindex Everything"), NULL,
+		B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(0, B_ESCAPE);
+	if (alert->Go() != 1)
+		return;
+
+	BMessenger indexServer(kIndexServerSignature);
+	if (!indexServer.IsValid()) {
+		fStatusView->SetText(B_TRANSLATE("Server not running"));
+		return;
+	}
+	indexServer.SendMessage(kMsgRequestFullReset);
+}
+
+
+void
 SettingsWindow::_UpdateStatus()
 {
 	BMessenger indexServer(kIndexServerSignature);
@@ -387,6 +423,10 @@ SettingsWindow::MessageReceived(BMessage* message)
 			// this window.
 			fSettings.Reload();
 			_ReloadPathList();
+			break;
+
+		case kMsgFullReset:
+			_RequestFullReset();
 			break;
 
 		case kMsgToggleAnalyser:

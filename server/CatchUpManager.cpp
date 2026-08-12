@@ -406,6 +406,25 @@ CatchUpManager::CatchUp()
 }
 
 
+bool
+CatchUpManager::FullReset()
+{
+	// PopulateCatchUp() takes the *maximum* sync position across all
+	// registered analysers as the run's start - an analyser left behind
+	// at an older position would never actually be included (its own
+	// syncPosition/kSecond >= fStart check in
+	// CatchUpAnalyser::AnalyseEntry() would just fail forever). Resetting
+	// every one of them to 0 together keeps them in lock step, so the
+	// window genuinely starts from the beginning for all of them instead
+	// of excluding whichever one was reset.
+	for (size_t i = 0; i < fRegisteredAnalysers.size(); i++) {
+		fRegisteredAnalysers[i]->SetSyncPosition(0);
+		fRegisteredAnalysers[i]->WriteSettings();
+	}
+	return CatchUp();
+}
+
+
 void
 CatchUpManager::PopulateCatchUp(CatchUpAnalyser* catchUpAnalyser)
 {

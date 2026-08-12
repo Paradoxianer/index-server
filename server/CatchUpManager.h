@@ -86,6 +86,12 @@ public:
 			//! rescan request that arrives mid-run is never silently
 			//! dropped.
 			bool				CatchUp();
+			//! Resets every registered analyser's sync position back to
+			//! the start and calls CatchUp() - unlike a normal CatchUp()
+			//! alone, this forces every one of them to be reindexed from
+			//! scratch rather than just picking up genuinely new changes
+			//! since their last sync position. See kMsgRequestFullReset.
+			bool				FullReset();
 			//! Stop all catch up threads.
 			void				Stop();
 
