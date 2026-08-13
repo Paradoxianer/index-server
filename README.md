@@ -98,11 +98,16 @@ tags here, but not full text") - it's all-or-nothing per volume. See issue
 
 ## Searching
 
-Launch **Index Search**. Type a query and press Enter or click "Search".
+Launch **Index Search**. Type a query, and results filter live as you type
+(or press Enter/click "Search" for an immediate search without waiting for
+the debounce).
 
 The query box is a real [Lucene query][lucene-syntax], not a plain keyword
-match: `"exact phrase"` for phrases, `AND`/`OR`/`NOT` between terms,
-`term*` for a prefix wildcard, `term~` for a fuzzy match. If you type
+match. Multiple words are ANDed together by default (`report january`
+means both words must appear, not either) - use `OR` explicitly for the
+looser match. Also available: `"exact phrase"` for phrases, `-word` to
+exclude a word, `term*` for a prefix wildcard, `term~` for a fuzzy match.
+If you type
 something that isn't valid query syntax (mismatched quotes, for instance),
 the search currently just comes back with zero results rather than
 explaining what went wrong - if a query you expect to work returns

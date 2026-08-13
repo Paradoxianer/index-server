@@ -377,8 +377,17 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 offset,
 		if (IndexReader::indexExists(fDataBasePath.Path())) {
 			reader = IndexReader::open(fDataBasePath.Path());
 			searcher = new IndexSearcher(reader);
-			query = QueryParser::parse(wQuery, kContentsField,
-				&fStandardAnalyzer);
+
+			// CLucene's own default (OR_OPERATOR) means "word1 word2"
+			// matches documents with *either* word - technically correct
+			// Lucene syntax, but surprising for anyone typing a few
+			// keywords expecting them to narrow the results, the way
+			// every other search box they've used behaves. Explicit
+			// "OR"/"-word" still work for whoever wants the looser or
+			// excluding behavior.
+			QueryParser parser(kContentsField, &fStandardAnalyzer);
+			parser.setDefaultOperator(QueryParser::AND_OPERATOR);
+			query = parser.parse(wQuery);
 			hits = searcher->search(query);
 
 			int32 totalHits = (int32)hits->length();

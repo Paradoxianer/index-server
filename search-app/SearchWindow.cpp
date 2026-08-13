@@ -234,17 +234,25 @@ SearchWindow::SearchWindow()
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
 
+	// Every row defaults to layout weight 1.0, splitting extra vertical
+	// space equally - the single-line query/load-more/status rows were
+	// getting stretched exactly like the results list, which is why the
+	// window opened at roughly half height (nothing to stretch into yet)
+	// and the visible list shrank the moment the load-more row appeared
+	// and claimed its own equal share. Weight 0 pins those rows to their
+	// natural height instead, leaving the results view the only one that
+	// grows or shrinks with the window.
 	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_WINDOW_SPACING)
-		.AddGroup(B_HORIZONTAL)
+		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
 			.Add(fQueryControl)
 			.Add(searchButton)
 			.End()
 		.Add(fResultsView)
-		.AddGroup(B_HORIZONTAL)
+		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
 			.Add(fLoadMoreButton)
 			.AddGlue()
 			.End()
-		.Add(fStatusView)
+		.Add(fStatusView, 0.0f)
 		;
 
 	fQueryControl->MakeFocus(true);
