@@ -50,6 +50,8 @@ static const uint32 kMsgOpenResult = 'Open';
 static const int32 kNameColumn = 0;
 static const int32 kLocationColumn = 1;
 static const int32 kScoreColumn = 2;
+static const int32 kSizeColumn = 3;
+static const int32 kModifiedColumn = 4;
 
 // Long enough that a fast typist's keystrokes collapse into one search
 // instead of one round trip per character; short enough to still feel
@@ -220,6 +222,20 @@ SearchWindow::SearchWindow()
 		100, 2000, B_TRUNCATE_MIDDLE), kLocationColumn);
 	fResultsView->AddColumn(new ScoreColumn(B_TRANSLATE("Score"), 60, 40,
 		120, B_TRUNCATE_END), kScoreColumn);
+
+	// Off by default (right-click the header to bring them back, a
+	// BColumnListView feature that needs no extra code here) - Score and
+	// Location cover the common case, and a column full of icon-sized
+	// bitmaps doesn't get much wider by showing more of them at once.
+	BSizeColumn* sizeColumn = new BSizeColumn(B_TRANSLATE("Size"), 70, 40,
+		200);
+	fResultsView->AddColumn(sizeColumn, kSizeColumn);
+	sizeColumn->SetVisible(false);
+
+	BDateColumn* modifiedColumn = new BDateColumn(B_TRANSLATE("Modified"),
+		140, 100, 300);
+	fResultsView->AddColumn(modifiedColumn, kModifiedColumn);
+	modifiedColumn->SetVisible(false);
 	fResultsView->SetInvocationMessage(new BMessage(kMsgOpenResult));
 	fResultsView->SetSortingEnabled(true);
 
@@ -424,6 +440,16 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 		BString scoreText;
 		scoreText.SetToFormat("%.2f", score);
 		row->SetField(new BStringField(scoreText.String()), kScoreColumn);
+
+		BEntry entry(&ref);
+		off_t size = 0;
+		entry.GetSize(&size);
+		row->SetField(new BSizeField(size), kSizeColumn);
+
+		time_t modified = 0;
+		entry.GetModificationTime(&modified);
+		row->SetField(new BDateField(&modified), kModifiedColumn);
+
 		fResultsView->AddRow(row);
 		count++;
 	}
