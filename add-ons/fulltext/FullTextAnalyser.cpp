@@ -299,6 +299,15 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		// touch it here.
 		return false;
 	}
+	// The actual Translate() call in _QueueTranslated() re-identifies the
+	// file itself rather than reusing this result, so this is otherwise
+	// unused - logged only so a future #47-style translator crash (see
+	// #68) names its culprit directly in the log, instead of needing a
+	// manual bisection of ~20 loaded translator add-ons after the fact.
+	if (status == B_OK) {
+		STRACE("identified %s as \"%s\" (translator %" B_PRId32 ")\n",
+			ref.name, cookie->info.name, (int32)cookie->info.translator);
+	}
 	cleanup_identify(cookie);
 	return status == B_OK;
 }
