@@ -44,6 +44,7 @@
 
 static const uint32 kMsgSearch = 'Srch';
 static const uint32 kMsgLiveFilter = 'LFlt';
+static const uint32 kMsgLoadMore = 'LdMr';
 static const uint32 kMsgOpenResult = 'Open';
 
 static const int32 kNameColumn = 0;
@@ -54,6 +55,9 @@ static const int32 kScoreColumn = 2;
 // instead of one round trip per character; short enough to still feel
 // live rather than like pressing a button.
 static const bigtime_t kLiveFilterDelay = 350000;
+
+// How many results one request (initial or "Load more") fetches.
+static const int32 kResultsPerPage = 100;
 
 
 namespace {
@@ -198,7 +202,7 @@ private:
 
 SearchWindow::SearchWindow()
 	:
-	BWindow(BRect(80, 80, 660, 480), B_TRANSLATE_SYSTEM_NAME("Index Search"),
+	BWindow(BRect(80, 80, 660, 500), B_TRANSLATE_SYSTEM_NAME("Index Search"),
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS),
 	fFilterRunner(NULL)
 {
@@ -219,7 +223,13 @@ SearchWindow::SearchWindow()
 	fResultsView->SetInvocationMessage(new BMessage(kMsgOpenResult));
 	fResultsView->SetSortingEnabled(true);
 
+	fLoadMoreButton = new BButton("loadMore", B_TRANSLATE("Load more results"),
+		new BMessage(kMsgLoadMore));
+	fLoadMoreButton->Hide();
+
 	fPendingQueryToken = 0;
+	fCurrentOffset = 0;
+	fTotalHits = 0;
 
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
@@ -230,6 +240,10 @@ SearchWindow::SearchWindow()
 			.Add(searchButton)
 			.End()
 		.Add(fResultsView)
+		.AddGroup(B_HORIZONTAL)
+			.Add(fLoadMoreButton)
+			.AddGlue()
+			.End()
 		.Add(fStatusView)
 		;
 
@@ -268,24 +282,50 @@ SearchWindow::_ScheduleLiveFilter()
 void
 SearchWindow::_RunSearch()
 {
-	for (int32 i = fResultsView->CountRows() - 1; i >= 0; i--) {
-		BRow* row = fResultsView->RowAt(i);
-		fResultsView->RemoveRow(row);
-		delete row;
-	}
-
-	// Bumped unconditionally, even below when there's nothing to search
-	// for - either way, any reply still in flight for a previous query is
-	// now stale and must not repopulate the list this call just cleared.
-	int32 token = ++fPendingQueryToken;
-
 	BString queryString(fQueryControl->Text());
 	STRACE("query text = \"%s\" (length %ld)\n", queryString.String(),
 		(long)queryString.Length());
 	if (queryString.Length() == 0) {
+		// Nothing in flight is worth waiting for a reply to clear - do it
+		// now. Also bumps the token, so a reply for whatever was still
+		// outstanding gets dropped as stale instead of repopulating a
+		// list the user just emptied.
+		++fPendingQueryToken;
+		for (int32 i = fResultsView->CountRows() - 1; i >= 0; i--) {
+			BRow* row = fResultsView->RowAt(i);
+			fResultsView->RemoveRow(row);
+			delete row;
+		}
+		if (!fLoadMoreButton->IsHidden())
+			fLoadMoreButton->Hide();
+		fCurrentOffset = 0;
+		fTotalHits = 0;
 		fStatusView->SetText(B_TRANSLATE("Type something to search for."));
 		return;
 	}
+
+	fCurrentOffset = 0;
+	_SendQuery(0);
+}
+
+
+void
+SearchWindow::_LoadMore()
+{
+	_SendQuery(fCurrentOffset);
+}
+
+
+// Shared by a fresh search (offset 0) and "Load more" (offset = however
+// many results are already showing). The existing rows are deliberately
+// left in place until the reply actually has replacements ready - clearing
+// up front and only then waiting on the round trip (which also fetches an
+// icon per result, not free for a full page) left the list visibly empty
+// for that whole stretch on every fresh search.
+void
+SearchWindow::_SendQuery(int32 offset)
+{
+	BString queryString(fQueryControl->Text());
 
 	bigtime_t t0 = system_time();
 	BMessenger indexServer(kIndexServerSignature);
@@ -300,7 +340,9 @@ SearchWindow::_RunSearch()
 
 	BMessage query(kMsgQuery);
 	query.AddString("query", queryString);
-	query.AddInt32("queryToken", token);
+	query.AddInt32("offset", offset);
+	query.AddInt32("maxResults", kResultsPerPage);
+	query.AddInt32("queryToken", ++fPendingQueryToken);
 
 	// Sent asynchronously (replyTo = this window, not the two-way
 	// SendMessage(message, &reply) that waits right here) - a search can
@@ -308,7 +350,8 @@ SearchWindow::_RunSearch()
 	// Commit() is holding, and blocking this thread for that blocks the
 	// whole window's message loop (repaint, Cancel, everything) along
 	// with it. The reply arrives later as a normal kMsgQueryReply message.
-	fStatusView->SetText(B_TRANSLATE("Searching…"));
+	fStatusView->SetText(offset == 0 ? B_TRANSLATE("Searching…")
+		: B_TRANSLATE("Loading more…"));
 	fSearchSentTime = system_time();
 	status_t sendStatus = indexServer.SendMessage(&query, this);
 	bigtime_t t2 = system_time();
@@ -326,9 +369,11 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 	if (reply->FindInt32("queryToken", &token) == B_OK
 		&& token != fPendingQueryToken) {
 		// A newer query has since been sent (e.g. the user kept typing
-		// during live filtering) - this reply is for a superseded query
-		// and may have arrived after that newer one's reply already did;
-		// applying it now would show stale results for the current text.
+		// during live filtering, or clicked "Load more" twice) - this
+		// reply is for a superseded query and may have arrived after
+		// that newer one's reply already did; applying it now would show
+		// stale results, possibly in the wrong place (a fresh search
+		// appended onto instead of replacing what's showing).
 		STRACE("dropping stale reply (token %" B_PRId32 ", pending %"
 			B_PRId32 ")\n", token, fPendingQueryToken);
 		return;
@@ -336,6 +381,17 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 
 	STRACE("reply received, round trip took %" B_PRId64 " us\n",
 		system_time() - fSearchSentTime);
+
+	// This is the first (and, until "Load more" is used again, only)
+	// reply for the current query text - now that replacement rows are
+	// actually ready, clear whatever the previous query left behind.
+	if (fCurrentOffset == 0) {
+		for (int32 i = fResultsView->CountRows() - 1; i >= 0; i--) {
+			BRow* row = fResultsView->RowAt(i);
+			fResultsView->RemoveRow(row);
+			delete row;
+		}
+	}
 
 	entry_ref ref;
 	float score;
@@ -363,19 +419,31 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 		fResultsView->AddRow(row);
 		count++;
 	}
+	fCurrentOffset += count;
+
+	reply->FindInt32("totalHits", &fTotalHits);
+	// Hide()/Show() nest (each Hide() needs its own matching Show()), so
+	// only call whichever one actually changes the current state -
+	// calling Hide() twice in a row would need two Show()s to undo.
+	bool shouldShowLoadMore = fCurrentOffset > 0 && fCurrentOffset < fTotalHits;
+	if (shouldShowLoadMore && fLoadMoreButton->IsHidden())
+		fLoadMoreButton->Show();
+	else if (!shouldShowLoadMore && !fLoadMoreButton->IsHidden())
+		fLoadMoreButton->Hide();
 
 	int32 searchedVolumes = 0;
 	reply->FindInt32("searchedVolumes", &searchedVolumes);
-	STRACE("count=%ld searchedVolumes=%ld\n", (long)count,
-		(long)searchedVolumes);
+	STRACE("count=%ld searchedVolumes=%ld totalHits=%ld\n", (long)count,
+		(long)searchedVolumes, (long)fTotalHits);
 
 	BString status;
 	if (searchedVolumes == 0) {
 		status = B_TRANSLATE("No volume has a full text index yet.");
 	} else {
 		status.SetToFormat(
-			B_TRANSLATE("%ld result(s) across %ld indexed volume(s)."),
-			(long)count, (long)searchedVolumes);
+			B_TRANSLATE("%ld of %ld result(s) shown, across %ld indexed "
+				"volume(s)."),
+			(long)fCurrentOffset, (long)fTotalHits, (long)searchedVolumes);
 	}
 	fStatusView->SetText(status.String());
 }
@@ -403,6 +471,10 @@ SearchWindow::MessageReceived(BMessage* message)
 
 		case kMsgLiveFilter:
 			_ScheduleLiveFilter();
+			break;
+
+		case kMsgLoadMore:
+			_LoadMore();
 			break;
 
 		case kMsgOpenResult:

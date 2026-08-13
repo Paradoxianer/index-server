@@ -24,10 +24,12 @@ public:
 	virtual	status_t			RemoveDocument(const entry_ref& ref) = 0;
 	virtual	status_t			Commit() = 0;
 
-	//! Runs a free-text query, appending up to maxResults matches to
-	//! \a reply as repeated "refs"/"scores" fields (same order).
+	//! Runs a free-text query, appending matches [offset, offset +
+	//! maxResults) to \a reply as repeated "refs"/"scores" fields (same
+	//! order), plus a "totalHits" count of all matches found.
 	virtual	status_t			Search(const BString& queryString,
-									int32 maxResults, BMessage& reply) = 0;
+									int32 offset, int32 maxResults,
+									BMessage& reply) = 0;
 };
 
 

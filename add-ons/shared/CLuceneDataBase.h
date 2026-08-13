@@ -62,13 +62,18 @@ public:
 			status_t			AddDocumentWithText(const entry_ref& ref,
 								const BString& text);
 
-			//! Runs a free-text query against the on-disk index and
-			//! appends up to maxResults matches to \a reply as repeated
-			//! "refs"/"scores" fields (same order). Shares the CLucene
-			//! file lock with the write path, so a search can't tear down
-			//! a commit that's replacing segment files underneath it.
+			//! Runs a free-text query against the on-disk index and appends
+			//! matches [offset, offset + maxResults) - already ranked by
+			//! CLucene, so this is a plain slice, not a re-sort - to
+			//! \a reply as repeated "refs"/"scores" fields (same order),
+			//! plus a "totalHits" count of how many matches exist in
+			//! total (for callers to know whether a later page would
+			//! return anything). Shares the CLucene file lock with the
+			//! write path, so a search can't tear down a commit that's
+			//! replacing segment files underneath it.
 			status_t			Search(const BString& queryString,
-								int32 maxResults, BMessage& reply);
+								int32 offset, int32 maxResults,
+								BMessage& reply);
 
 private:
 			//! A queued document and where to actually read its content

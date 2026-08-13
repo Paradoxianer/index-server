@@ -12,6 +12,7 @@
 #include <Window.h>
 
 
+class BButton;
 class BColumnListView;
 class BMessageRunner;
 class BTextControl;
@@ -28,16 +29,22 @@ public:
 
 private:
 			void				_RunSearch();
+			void				_LoadMore();
+			void				_SendQuery(int32 offset);
 			void				_ScheduleLiveFilter();
 			void				_HandleQueryReply(BMessage* reply);
 			void				_OpenSelected();
+			void				_UpdateLoadMoreButton();
 
 			BTextControl*		fQueryControl;
 			BColumnListView*	fResultsView;
+			BButton*			fLoadMoreButton;
 			BStringView*		fStatusView;
 			bigtime_t			fSearchSentTime;
 			BMessageRunner*		fFilterRunner;
 			int32				fPendingQueryToken;
+			int32				fCurrentOffset;
+			int32				fTotalHits;
 };
 
 

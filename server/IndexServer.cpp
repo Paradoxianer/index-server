@@ -156,15 +156,28 @@ IndexServer::MessageReceived(BMessage *message)
 			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
 				maxResults = requestedMax;
 
+			// Applied identically to every volume rather than as one
+			// combined offset into a globally-merged ranking - results
+			// still aren't merge-sorted by score across volumes (each
+			// volume's own hits are just concatenated, oldest limitation,
+			// not new here), so a per-volume offset is at least consistent
+			// with how results were already being combined.
+			int32 offset = 0;
+			int32 requestedOffset;
+			if (message->FindInt32("offset", &requestedOffset) == B_OK)
+				offset = requestedOffset;
+
 			bigtime_t queryStart = system_time();
 			BMessage reply(kMsgQueryReply);
 			int32 searchedVolumes = 0;
+			int32 totalHits = 0;
 			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
 				VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
 
 				BMessage volumeQuery;
 				volumeQuery.AddString("query", queryString);
 				volumeQuery.AddInt32("maxResults", maxResults);
+				volumeQuery.AddInt32("offset", offset);
 				BMessage volumeReply;
 				bigtime_t volumeStart = system_time();
 				status_t status = watcher->HandleQuery(kFullTextAnalyserName,
@@ -177,6 +190,12 @@ IndexServer::MessageReceived(BMessage *message)
 					continue;
 				searchedVolumes++;
 
+				int32 volumeTotalHits;
+				if (volumeReply.FindInt32("totalHits", &volumeTotalHits)
+						== B_OK) {
+					totalHits += volumeTotalHits;
+				}
+
 				entry_ref ref;
 				float score;
 				for (int32 j = 0; volumeReply.FindRef("refs", j, &ref)
@@ -187,6 +206,7 @@ IndexServer::MessageReceived(BMessage *message)
 				}
 			}
 			reply.AddInt32("searchedVolumes", searchedVolumes);
+			reply.AddInt32("totalHits", totalHits);
 
 			// Echoed back verbatim so a client that can have more than one
 			// query in flight (e.g. live-filter-while-typing) can tell a

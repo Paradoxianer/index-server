@@ -354,8 +354,8 @@ CLuceneWriteDataBase::AddDocumentWithText(const entry_ref& ref,
 
 
 status_t
-CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
-	BMessage& reply)
+CLuceneWriteDataBase::Search(const BString& queryString, int32 offset,
+	int32 maxResults, BMessage& reply)
 {
 	bigtime_t lockWaitStart = system_time();
 	CLuceneFileLock lock(fDataBasePath);
@@ -381,11 +381,14 @@ CLuceneWriteDataBase::Search(const BString& queryString, int32 maxResults,
 				&fStandardAnalyzer);
 			hits = searcher->search(query);
 
-			int32 count = (int32)hits->length();
-			if (count > maxResults)
-				count = maxResults;
+			int32 totalHits = (int32)hits->length();
+			reply.AddInt32("totalHits", totalHits);
 
-			for (int32 i = 0; i < count; i++) {
+			int32 end = offset + maxResults;
+			if (end > totalHits)
+				end = totalHits;
+
+			for (int32 i = offset; i < end; i++) {
 				Document& doc = hits->doc(i);
 				const TCHAR* wPath = doc.get(kPathField);
 				if (wPath == NULL)

@@ -257,7 +257,12 @@ FullTextAnalyser::HandleQuery(const BMessage& query, BMessage& reply)
 	if (query.FindInt32("maxResults", &requestedMax) == B_OK)
 		maxResults = requestedMax;
 
-	return fWriteDataBase->Search(queryString, maxResults, reply);
+	int32 offset = 0;
+	int32 requestedOffset;
+	if (query.FindInt32("offset", &requestedOffset) == B_OK)
+		offset = requestedOffset;
+
+	return fWriteDataBase->Search(queryString, offset, maxResults, reply);
 }
 
 
