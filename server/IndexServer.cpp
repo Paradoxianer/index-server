@@ -187,6 +187,16 @@ IndexServer::MessageReceived(BMessage *message)
 				}
 			}
 			reply.AddInt32("searchedVolumes", searchedVolumes);
+
+			// Echoed back verbatim so a client that can have more than one
+			// query in flight (e.g. live-filter-while-typing) can tell a
+			// stale reply - for a query since superseded by a newer
+			// keystroke - apart from the one it's actually still waiting
+			// on, regardless of the order replies arrive in.
+			int32 token;
+			if (message->FindInt32("queryToken", &token) == B_OK)
+				reply.AddInt32("queryToken", token);
+
 			STRACE("kMsgQuery: total handling took %" B_PRId64 " us\n",
 				system_time() - queryStart);
 			message->SendReply(&reply);

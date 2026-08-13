@@ -13,6 +13,7 @@
 
 
 class BColumnListView;
+class BMessageRunner;
 class BTextControl;
 class BStringView;
 
@@ -27,6 +28,7 @@ public:
 
 private:
 			void				_RunSearch();
+			void				_ScheduleLiveFilter();
 			void				_HandleQueryReply(BMessage* reply);
 			void				_OpenSelected();
 
@@ -34,6 +36,8 @@ private:
 			BColumnListView*	fResultsView;
 			BStringView*		fStatusView;
 			bigtime_t			fSearchSentTime;
+			BMessageRunner*		fFilterRunner;
+			int32				fPendingQueryToken;
 };
 
 

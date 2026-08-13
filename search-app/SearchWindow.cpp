@@ -7,14 +7,19 @@
  */
 #include "SearchWindow.h"
 
+#include <stdlib.h>
+
 #include <Application.h>
+#include <Bitmap.h>
 #include <Button.h>
 #include <Catalog.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
 #include <Entry.h>
 #include <LayoutBuilder.h>
+#include <MessageRunner.h>
 #include <Messenger.h>
+#include <NodeInfo.h>
 #include <Path.h>
 #include <Roster.h>
 #include <StringView.h>
@@ -38,30 +43,183 @@
 
 
 static const uint32 kMsgSearch = 'Srch';
+static const uint32 kMsgLiveFilter = 'LFlt';
 static const uint32 kMsgOpenResult = 'Open';
 
-static const int32 kPathColumn = 0;
-static const int32 kScoreColumn = 1;
+static const int32 kNameColumn = 0;
+static const int32 kLocationColumn = 1;
+static const int32 kScoreColumn = 2;
+
+// Long enough that a fast typist's keystrokes collapse into one search
+// instead of one round trip per character; short enough to still feel
+// live rather than like pressing a button.
+static const bigtime_t kLiveFilterDelay = 350000;
+
+
+namespace {
+
+
+// Combines an icon with the filename in one field, the same approach
+// DriveSetup's PartitionList.cpp uses - the stock ColumnTypes.h only
+// offers BBitmapField and BStringField separately, not a field type
+// that draws both together.
+class IconStringField : public BStringField {
+public:
+	IconStringField(BBitmap* bitmap, const char* string)
+		:
+		BStringField(string),
+		fBitmap(bitmap)
+	{
+	}
+
+	virtual ~IconStringField()
+	{
+		delete fBitmap;
+	}
+
+	const BBitmap* Bitmap() const
+	{
+		return fBitmap;
+	}
+
+private:
+	BBitmap* fBitmap;
+};
+
+
+// Draws an IconStringField's bitmap and text side by side. Subclassing
+// BStringColumn (rather than BTitledColumn directly, as DriveSetup does)
+// means CompareFields() and AcceptsField() - both string-based - come for
+// free; only the drawing needs to account for the icon.
+class IconNameColumn : public BStringColumn {
+public:
+	IconNameColumn(const char* title, float width, float minWidth,
+		float maxWidth, uint32 truncateMode)
+		:
+		BStringColumn(title, width, minWidth, maxWidth, truncateMode)
+	{
+	}
+
+	virtual void DrawField(BField* field, BRect rect, BView* parent)
+	{
+		IconStringField* iconField = dynamic_cast<IconStringField*>(field);
+		if (iconField == NULL) {
+			BStringColumn::DrawField(field, rect, parent);
+			return;
+		}
+
+		const BBitmap* bitmap = iconField->Bitmap();
+		const float kIconTextGap = 4.0f;
+		float iconWidth = bitmap != NULL ? bitmap->Bounds().Width() + 1 : 0;
+
+		if (bitmap != NULL) {
+			float y = rect.top
+				+ (rect.Height() - bitmap->Bounds().Height()) / 2;
+			parent->SetDrawingMode(B_OP_ALPHA);
+			parent->DrawBitmap(bitmap, BPoint(rect.left, y));
+			parent->SetDrawingMode(B_OP_OVER);
+		}
+
+		BRect textRect(rect);
+		textRect.left += iconWidth + kIconTextGap;
+
+		float width = textRect.Width();
+		if (width != iconField->Width()) {
+			BString truncated(iconField->String());
+			parent->TruncateString(&truncated, B_TRUNCATE_MIDDLE, width + 2);
+			iconField->SetClippedString(truncated.String());
+			iconField->SetWidth(width);
+		}
+		DrawString(iconField->ClippedString(), parent, textRect);
+	}
+
+	virtual float GetPreferredWidth(BField* field, BView* parent) const
+	{
+		IconStringField* iconField = dynamic_cast<IconStringField*>(field);
+		if (iconField == NULL)
+			return BStringColumn::GetPreferredWidth(field, parent);
+
+		float width = BStringColumn::GetPreferredWidth(field, parent);
+		const BBitmap* bitmap = iconField->Bitmap();
+		if (bitmap != NULL)
+			width += bitmap->Bounds().Width() + 5;
+		return width;
+	}
+};
+
+
+// Scores are formatted text ("0.85"), but sorting them as text would put
+// "10.00" before "2.00" - compare the actual numeric value instead.
+class ScoreColumn : public BStringColumn {
+public:
+	ScoreColumn(const char* title, float width, float minWidth,
+		float maxWidth, uint32 truncateMode)
+		:
+		BStringColumn(title, width, minWidth, maxWidth, truncateMode)
+	{
+	}
+
+	virtual int CompareFields(BField* field1, BField* field2)
+	{
+		double value1 = atof(((BStringField*)field1)->String());
+		double value2 = atof(((BStringField*)field2)->String());
+		if (value1 < value2)
+			return -1;
+		if (value1 > value2)
+			return 1;
+		return 0;
+	}
+};
+
+
+// Keeps the entry_ref a row was built from, so opening it doesn't need to
+// reconstruct a path from truncated/split display text.
+class ResultRow : public BRow {
+public:
+	ResultRow(const entry_ref& ref)
+		:
+		BRow(),
+		fRef(ref)
+	{
+	}
+
+	const entry_ref& Ref() const
+	{
+		return fRef;
+	}
+
+private:
+	entry_ref fRef;
+};
+
+
+}	// namespace
 
 
 SearchWindow::SearchWindow()
 	:
-	BWindow(BRect(80, 80, 620, 480), B_TRANSLATE_SYSTEM_NAME("Index Search"),
-		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
+	BWindow(BRect(80, 80, 660, 480), B_TRANSLATE_SYSTEM_NAME("Index Search"),
+		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS),
+	fFilterRunner(NULL)
 {
 	fQueryControl = new BTextControl("query", NULL, "",
 		new BMessage(kMsgSearch));
-	fQueryControl->SetModificationMessage(NULL);
+	fQueryControl->SetModificationMessage(new BMessage(kMsgLiveFilter));
 
 	BButton* searchButton = new BButton("search", B_TRANSLATE("Search"),
 		new BMessage(kMsgSearch));
 
 	fResultsView = new BColumnListView("results", B_NAVIGABLE, B_PLAIN_BORDER);
-	fResultsView->AddColumn(new BStringColumn(B_TRANSLATE("Path"), 400, 150,
-		2000, B_TRUNCATE_MIDDLE), kPathColumn);
-	fResultsView->AddColumn(new BStringColumn(B_TRANSLATE("Score"), 60, 40,
+	fResultsView->AddColumn(new IconNameColumn(B_TRANSLATE("Name"), 220, 100,
+		600, B_TRUNCATE_MIDDLE), kNameColumn);
+	fResultsView->AddColumn(new BStringColumn(B_TRANSLATE("Location"), 260,
+		100, 2000, B_TRUNCATE_MIDDLE), kLocationColumn);
+	fResultsView->AddColumn(new ScoreColumn(B_TRANSLATE("Score"), 60, 40,
 		120, B_TRUNCATE_END), kScoreColumn);
 	fResultsView->SetInvocationMessage(new BMessage(kMsgOpenResult));
+	fResultsView->SetSortingEnabled(true);
+
+	fPendingQueryToken = 0;
 
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
@@ -81,6 +239,29 @@ SearchWindow::SearchWindow()
 
 SearchWindow::~SearchWindow()
 {
+	delete fFilterRunner;
+}
+
+
+// Debounces live-filter keystrokes: each modification cancels any pending
+// search and schedules a new one kLiveFilterDelay out, so a burst of
+// typing collapses into a single query instead of one per character.
+void
+SearchWindow::_ScheduleLiveFilter()
+{
+	delete fFilterRunner;
+	fFilterRunner = NULL;
+
+	if (BString(fQueryControl->Text()).Length() == 0) {
+		// Nothing to debounce - clear immediately, same as an empty
+		// explicit search.
+		_RunSearch();
+		return;
+	}
+
+	BMessage message(kMsgSearch);
+	fFilterRunner = new BMessageRunner(BMessenger(this), &message,
+		kLiveFilterDelay, 1);
 }
 
 
@@ -92,6 +273,11 @@ SearchWindow::_RunSearch()
 		fResultsView->RemoveRow(row);
 		delete row;
 	}
+
+	// Bumped unconditionally, even below when there's nothing to search
+	// for - either way, any reply still in flight for a previous query is
+	// now stale and must not repopulate the list this call just cleared.
+	int32 token = ++fPendingQueryToken;
 
 	BString queryString(fQueryControl->Text());
 	STRACE("query text = \"%s\" (length %ld)\n", queryString.String(),
@@ -114,6 +300,7 @@ SearchWindow::_RunSearch()
 
 	BMessage query(kMsgQuery);
 	query.AddString("query", queryString);
+	query.AddInt32("queryToken", token);
 
 	// Sent asynchronously (replyTo = this window, not the two-way
 	// SendMessage(message, &reply) that waits right here) - a search can
@@ -135,6 +322,18 @@ SearchWindow::_RunSearch()
 void
 SearchWindow::_HandleQueryReply(BMessage* reply)
 {
+	int32 token;
+	if (reply->FindInt32("queryToken", &token) == B_OK
+		&& token != fPendingQueryToken) {
+		// A newer query has since been sent (e.g. the user kept typing
+		// during live filtering) - this reply is for a superseded query
+		// and may have arrived after that newer one's reply already did;
+		// applying it now would show stale results for the current text.
+		STRACE("dropping stale reply (token %" B_PRId32 ", pending %"
+			B_PRId32 ")\n", token, fPendingQueryToken);
+		return;
+	}
+
 	STRACE("reply received, round trip took %" B_PRId64 " us\n",
 		system_time() - fSearchSentTime);
 
@@ -145,9 +344,19 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 		reply->FindFloat("scores", i, &score);
 
 		BPath path(&ref);
+		BPath parent;
+		path.GetParent(&parent);
 		STRACE("result %ld: %s (score %.3f)\n", (long)i, path.Path(), score);
-		BRow* row = new BRow();
-		row->SetField(new BStringField(path.Path()), kPathColumn);
+
+		BBitmap* icon = new BBitmap(BRect(0, 0, 15, 15), B_RGBA32);
+		if (BNodeInfo::GetTrackerIcon(&ref, icon, B_MINI_ICON) != B_OK) {
+			delete icon;
+			icon = NULL;
+		}
+
+		ResultRow* row = new ResultRow(ref);
+		row->SetField(new IconStringField(icon, ref.name), kNameColumn);
+		row->SetField(new BStringField(parent.Path()), kLocationColumn);
 		BString scoreText;
 		scoreText.SetToFormat("%.2f", score);
 		row->SetField(new BStringField(scoreText.String()), kScoreColumn);
@@ -175,17 +384,11 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 void
 SearchWindow::_OpenSelected()
 {
-	BRow* row = fResultsView->CurrentSelection();
+	ResultRow* row = static_cast<ResultRow*>(fResultsView->CurrentSelection());
 	if (row == NULL)
 		return;
 
-	BStringField* field = static_cast<BStringField*>(row->GetField(
-		kPathColumn));
-	BEntry entry(field->String());
-	entry_ref ref;
-	if (entry.GetRef(&ref) != B_OK)
-		return;
-
+	entry_ref ref = row->Ref();
 	be_roster->Launch(&ref);
 }
 
@@ -196,6 +399,10 @@ SearchWindow::MessageReceived(BMessage* message)
 	switch (message->what) {
 		case kMsgSearch:
 			_RunSearch();
+			break;
+
+		case kMsgLiveFilter:
+			_ScheduleLiveFilter();
 			break;
 
 		case kMsgOpenResult:
