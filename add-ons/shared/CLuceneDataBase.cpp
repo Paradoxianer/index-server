@@ -91,6 +91,46 @@ private:
 };
 
 
+// create_directory() on the not-yet-existing target itself can't be
+// guarded by a lock file living inside that same directory (chicken-and-
+// egg - CLuceneFileLock above assumes fDataBasePath already exists).
+// MailAnalyser and FullTextAnalyser can both construct their
+// CLuceneWriteDataBase for the same not-yet-existing directory at nearly
+// the same instant during add-on registration; on real hardware that raced
+// BFS's own block allocator into "PANIC: blocks already set!" while
+// building the new directory's B+tree (most likely a BFS locking bug, but
+// trivially avoidable from here). The lock file instead lives in
+// dataBasePath's *parent*, which - unlike the target - is reliably created
+// ahead of time (IndexServerSettings/VolumeWatcher write their own files
+// there during startup, before any analyser is constructed).
+class CLuceneDirectoryCreateLock {
+public:
+	CLuceneDirectoryCreateLock(const BPath& dataBasePath)
+		:
+		fFd(-1)
+	{
+		BPath lockPath;
+		if (dataBasePath.GetParent(&lockPath) != B_OK)
+			return;
+		lockPath.Append("index_server_dircreate.lock");
+		fFd = open(lockPath.Path(), O_CREAT | O_RDWR, 0644);
+		if (fFd >= 0)
+			flock(fFd, LOCK_EX);
+	}
+
+	~CLuceneDirectoryCreateLock()
+	{
+		if (fFd >= 0) {
+			flock(fFd, LOCK_UN);
+			close(fFd);
+		}
+	}
+
+private:
+	int	fFd;
+};
+
+
 }	// namespace
 
 
@@ -126,6 +166,7 @@ CLuceneWriteDataBase::CLuceneWriteDataBase(const BPath& databasePath)
 	fIndexWriter(NULL)
 {
 	printf("CLuceneWriteDataBase fDataBasePath %s\n", fDataBasePath.Path());
+	CLuceneDirectoryCreateLock lock(fDataBasePath);
 	create_directory(fDataBasePath.Path(), 0755);
 }
 
