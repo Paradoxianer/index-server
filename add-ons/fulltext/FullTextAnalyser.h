@@ -49,6 +49,7 @@ private:
 	inline	bool				_InterestingEntry(const entry_ref& ref);
 	inline	bool				_IsInIndexDirectory(const entry_ref& ref);
 	inline	bool				_IsPlainText(const entry_ref& ref);
+	inline	bool				_LooksLikeBinary(const entry_ref& ref);
 
 			//! Translates ref to a temp plain-text file next to the
 			//! index (kTranslateTimeout-bounded) and queues it for

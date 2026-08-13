@@ -288,6 +288,9 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	if (_IsPlainText(ref))
 		return true;
 
+	if (_LooksLikeBinary(ref))
+		return false;
+
 	identify_cookie* cookie = new(std::nothrow) identify_cookie;
 	if (cookie == NULL)
 		return false;
@@ -329,6 +332,47 @@ FullTextAnalyser::_IsPlainText(const entry_ref& ref)
 	// equality rule (see #49).
 	return node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
 		&& strncasecmp(mimeType, "text/", 5) == 0;
+}
+
+
+// A NUL byte anywhere in the first few KB is the same heuristic git and
+// "grep -I" use to call a file binary - genuine text (any encoding this
+// system produces or expects) never contains one. #47 already stopped
+// feeding known-text files to BTranslatorRoster; this catches the
+// opposite and, in practice, more common case on a real system:
+// compiled objects, archives, stripped binaries, browser cache files -
+// ordinary byproducts of ordinary use, not anything unusual - that a
+// buggy translator has been observed corrupting memory on when handed
+// to Identify()/Translate() anyway (#27/#68). A real translator addon
+// (an image codec on truncated/malformed input, for instance) still
+// gets a chance normally; this only skips content that's unambiguously
+// not text to begin with, before it ever reaches that gauntlet.
+bool
+FullTextAnalyser::_LooksLikeBinary(const entry_ref& ref)
+{
+	BFile file(&ref, B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return false;
+
+	const size_t kSniffSize = 8000;
+	char buffer[kSniffSize];
+	ssize_t bytesRead = file.Read(buffer, kSniffSize);
+	if (bytesRead <= 0) {
+		// Not "safely proven text" - could be a genuinely empty file (no
+		// content to index either way, nothing lost by skipping it), or
+		// - observed live - a file whose B_ENTRY_CREATED notification is
+		// processed before its writer's data has actually landed, racing
+		// to read 0 bytes of a file that reports a real size moments
+		// later (see #28: StatChanged() currently doesn't re-trigger
+		// analysis on its own, so this specific race can mean a file
+		// created-then-filled only gets indexed on the next catch-up,
+		// not live - a separate, pre-existing gap). Either way, treating
+		// "couldn't confirm it's text" as "don't risk the translator" is
+		// the safe default, not the other way round.
+		return true;
+	}
+
+	return memchr(buffer, 0, bytesRead) != NULL;
 }
 
 
