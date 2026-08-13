@@ -6,7 +6,7 @@ APP_MIME_SIG =
 
 SRCS = \
 	ExifAnalyser.cpp \
-	RunWithTimeout.cpp \
+	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =

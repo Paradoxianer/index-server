@@ -7,7 +7,7 @@ APP_MIME_SIG = application/x-vnd.Haiku-IndexServerSettings
 SRCS = \
 	IndexServerPreflet.cpp \
 	SettingsWindow.cpp \
-	../server/IndexServerSettings.cpp
+	SettingsBackend.cpp
 
 RDEFS = IndexServerSettings.rdef
 RSRCS =

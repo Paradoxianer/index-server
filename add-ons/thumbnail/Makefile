@@ -6,7 +6,7 @@ APP_MIME_SIG =
 
 SRCS = \
 	ThumbnailAnalyser.cpp \
-	RunWithTimeout.cpp \
+	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =

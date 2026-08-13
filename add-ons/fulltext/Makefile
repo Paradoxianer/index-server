@@ -5,9 +5,9 @@ TYPE = SHARED
 APP_MIME_SIG =
 
 SRCS = \
-	CLuceneDataBase.cpp \
+	../shared/CLuceneDataBase.cpp \
 	FullTextAnalyser.cpp \
-	RunWithTimeout.cpp \
+	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =

@@ -6,8 +6,8 @@ APP_MIME_SIG =
 
 SRCS = \
 	MailAnalyser.cpp \
-	CLuceneDataBase.cpp \
-	RunWithTimeout.cpp \
+	../shared/CLuceneDataBase.cpp \
+	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =

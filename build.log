@@ -1,0 +1,137 @@
+=== server ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/CatchUpManager.d" CatchUpManager.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexProgressNotifier.d" IndexProgressNotifier.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/main.d" main.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServer.d" IndexServer.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerSettings.d" IndexServerSettings.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/VolumeWatcher.d" VolumeWatcher.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../add-ons/IndexServerAddOn.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/AddOnMonitorHandler.d" ../vendor/storage-kit/AddOnMonitorHandler.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../add-ons/  -I../vendor/storage-kit/  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/NodeMonitorHandler.d" ../vendor/storage-kit/NodeMonitorHandler.cpp
+g++ -c CatchUpManager.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/CatchUpManager.o"
+g++ -c IndexProgressNotifier.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexProgressNotifier.o"
+g++ -c main.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/main.o"
+g++ -c IndexServer.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServer.o"
+g++ -c IndexServerSettings.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerSettings.o"
+g++ -c VolumeWatcher.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/VolumeWatcher.o"
+g++ -c ../add-ons/IndexServerAddOn.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+g++ -c ../vendor/storage-kit/AddOnMonitorHandler.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/AddOnMonitorHandler.o"
+g++ -c ../vendor/storage-kit/NodeMonitorHandler.cpp -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/NodeMonitorHandler.o"
+cat index_server.rdef | cc -E -iquote./  -iquote../add-ons/  -iquote../vendor/storage-kit/  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../vendor/storage-kit  -isystem/boot/system/develop/headers/private/system  -isystem/boot/system/develop/headers/private/system/arch/x86_64 -O0 -g -Wall -Wno-multichar   - | grep -av '^#' | rc -I ./ -o "objects.x86_64-cc13-debug/index_server.rsrc" -
+cc -o "objects.x86_64-cc13-debug/index_server" 	objects.x86_64-cc13-debug/CatchUpManager.o objects.x86_64-cc13-debug/IndexProgressNotifier.o objects.x86_64-cc13-debug/main.o objects.x86_64-cc13-debug/IndexServer.o objects.x86_64-cc13-debug/IndexServerSettings.o objects.x86_64-cc13-debug/VolumeWatcher.o objects.x86_64-cc13-debug/IndexServerAddOn.o objects.x86_64-cc13-debug/AddOnMonitorHandler.o objects.x86_64-cc13-debug/NodeMonitorHandler.o -g -Xlinker -soname=_APP_  -L../add-ons/  -L../vendor/storage-kit/  -L./  -Lobjects.x86_64-cc13-debug/    -lbe  -llocalestub  -lstdc++  -lsupc++ 
+xres -o objects.x86_64-cc13-debug/index_server 	objects.x86_64-cc13-debug/index_server.rsrc
+mimeset -f "objects.x86_64-cc13-debug/index_server"
+=== add-ons/fulltext ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/CLuceneDataBase.d" ../shared/CLuceneDataBase.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/FullTextAnalyser.d" FullTextAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c ../shared/CLuceneDataBase.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/CLuceneDataBase.o"
+g++ -c FullTextAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/FullTextAnalyser.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/FullTextAnalyser" 	objects.x86_64-cc13-debug/CLuceneDataBase.o objects.x86_64-cc13-debug/FullTextAnalyser.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=FullTextAnalyser  -L../  -L../shared/  -L./    -lbe  -ltranslation  -lclucene-core  -lclucene-shared  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/FullTextAnalyser"
+=== add-ons/audiotags ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/AudioTagAnalyser.d" AudioTagAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c AudioTagAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers  -isystem/boot/system/develop/headers/taglib -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/AudioTagAnalyser.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers  -isystem/boot/system/develop/headers/taglib -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers  -isystem/boot/system/develop/headers/taglib -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/AudioTagAnalyser" 	objects.x86_64-cc13-debug/AudioTagAnalyser.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=AudioTagAnalyser  -L../  -L../shared/  -L./    -lbe  -ltag  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/AudioTagAnalyser"
+=== add-ons/exif ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/ExifAnalyser.d" ExifAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c ExifAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/ExifAnalyser.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/ExifAnalyser" 	objects.x86_64-cc13-debug/ExifAnalyser.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=ExifAnalyser  -L../  -L../shared/  -L./    -lbe  -lexif  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/ExifAnalyser"
+=== add-ons/mediakit ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/MediaKitAnalyser.d" MediaKitAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c MediaKitAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/MediaKitAnalyser.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/MediaKitAnalyser" 	objects.x86_64-cc13-debug/MediaKitAnalyser.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=MediaKitAnalyser  -L../  -L../shared/  -L./    -lbe  -lmedia  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/MediaKitAnalyser"
+=== add-ons/mail ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/MailAnalyser.d" MailAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/CLuceneDataBase.d" ../shared/CLuceneDataBase.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c MailAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/MailAnalyser.o"
+g++ -c ../shared/CLuceneDataBase.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/CLuceneDataBase.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/MailAnalyser" 	objects.x86_64-cc13-debug/MailAnalyser.o objects.x86_64-cc13-debug/CLuceneDataBase.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=MailAnalyser  -L../  -L../shared/  -L./    -lbe  -ltranslation  -lmail  -lclucene-core  -lclucene-shared  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/MailAnalyser"
+=== add-ons/thumbnail ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/ThumbnailAnalyser.d" ThumbnailAnalyser.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/RunWithTimeout.d" ../shared/RunWithTimeout.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I../  -I../shared/  -I./  -I../shared -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerAddOn.d" ../IndexServerAddOn.cpp
+g++ -c ThumbnailAnalyser.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/ThumbnailAnalyser.o"
+g++ -c ../shared/RunWithTimeout.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/RunWithTimeout.o"
+g++ -c ../IndexServerAddOn.cpp -iquote./  -iquote../  -iquote../shared/  -iquote./  -iquote../shared  -isystem../../headers -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerAddOn.o"
+cc -o "objects.x86_64-cc13-debug/ThumbnailAnalyser" 	objects.x86_64-cc13-debug/ThumbnailAnalyser.o objects.x86_64-cc13-debug/RunWithTimeout.o objects.x86_64-cc13-debug/IndexServerAddOn.o -g -shared -Xlinker -soname=ThumbnailAnalyser  -L../  -L../shared/  -L./    -lbe  -ltranslation  -lstdc++  -lsupc++ 
+mimeset -f "objects.x86_64-cc13-debug/ThumbnailAnalyser"
+=== preferences ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexServerPreflet.d" IndexServerPreflet.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/SettingsWindow.d" SettingsWindow.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/SettingsBackend.d" SettingsBackend.cpp
+mkdepend: Info: Can't find '../server/IndexServerPrivate.h'.
+mkdepend:   Included at least by: ../server/IndexServerSettings.cpp
+g++ -c IndexServerPreflet.cpp -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../server  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexServerPreflet.o"
+g++ -c SettingsWindow.cpp -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../server  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/SettingsWindow.o"
+g++ -c SettingsBackend.cpp -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../server  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/SettingsBackend.o"
+cat IndexServerSettings.rdef | cc -E -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem../server  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar   - | grep -av '^#' | rc -I ./ -o "objects.x86_64-cc13-debug/IndexServerSettings.rsrc" -
+cc -o "objects.x86_64-cc13-debug/IndexServerSettings" 	objects.x86_64-cc13-debug/IndexServerPreflet.o objects.x86_64-cc13-debug/SettingsWindow.o objects.x86_64-cc13-debug/SettingsBackend.o -g -Xlinker -soname=_APP_  -L./  -Lobjects.x86_64-cc13-debug/    -lbe  -ltracker  -llocalestub  -lcolumnlistview  -lstdc++  -lsupc++ 
+xres -o objects.x86_64-cc13-debug/IndexServerSettings 	objects.x86_64-cc13-debug/IndexServerSettings.rsrc
+mimeset -f "objects.x86_64-cc13-debug/IndexServerSettings"
+=== search-app ===
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/IndexSearchApp.d" IndexSearchApp.cpp
+mkdir -p objects.x86_64-cc13-debug; \
+mkdepend  -I./  -Iobjects.x86_64-cc13-debug/ -p .cpp:objects.x86_64-cc13-debug/%n.o -m -f "objects.x86_64-cc13-debug/SearchWindow.d" SearchWindow.cpp
+g++ -c IndexSearchApp.cpp -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/IndexSearchApp.o"
+g++ -c SearchWindow.cpp -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar -Wno-ctor-dtor-privacy   -o "objects.x86_64-cc13-debug/SearchWindow.o"
+cat IndexServerSearch.rdef | cc -E -iquote./  -iquote./  -iquoteobjects.x86_64-cc13-debug/  -isystem../headers  -isystem/boot/system/develop/headers/private/interface -O0 -g -Wall -Wno-multichar   - | grep -av '^#' | rc -I ./ -o "objects.x86_64-cc13-debug/IndexServerSearch.rsrc" -
+cc -o "objects.x86_64-cc13-debug/IndexServerSearch" 	objects.x86_64-cc13-debug/IndexSearchApp.o objects.x86_64-cc13-debug/SearchWindow.o -g -Xlinker -soname=_APP_  -L./  -Lobjects.x86_64-cc13-debug/    -lbe  -llocalestub  -lcolumnlistview  -lstdc++  -lsupc++ 
+xres -o objects.x86_64-cc13-debug/IndexServerSearch 	objects.x86_64-cc13-debug/IndexServerSearch.rsrc
+mimeset -f "objects.x86_64-cc13-debug/IndexServerSearch"
