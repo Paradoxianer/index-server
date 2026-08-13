@@ -1,10 +1,32 @@
-# index_server
+# index-server
 
 A live content-indexing service for Haiku, originally started by Clemens
 Zeidler (GSoC 2010) and revived here. Watches your volumes, keeps a set of
 add-ons ("analysers") up to date about every file that changes, and lets
 those add-ons decide what's worth remembering about it - a full-text index,
 a few BFS attributes, or nothing at all.
+
+Builds against a plain Haiku devel install (`clucene_devel`, `taglib_devel`,
+`libexif_devel`) using the standard Makefile-Engine - no full Haiku source
+tree checkout needed. See `dev.sh` for the sync/build/install/run cycle
+against a Haiku test VM.
+
+## Project layout
+
+- `server/` - the index_server binary itself (`IndexServer`, `VolumeWatcher`,
+  `CatchUpManager`, settings, launch_daemon job definition)
+- `add-ons/` - one directory per analyser add-on (`fulltext`, `mail`,
+  `audiotags`, `exif`, `mediakit`, `thumbnail`), plus `shared/` for the
+  CLucene wrapper and analyser code common to more than one of them
+- `preferences/` - the settings preflet (`IndexServerSettings`)
+- `search-app/` - the full-text search window (`IndexServerSearch`)
+- `headers/` - index_server's own private headers, shared across targets
+- `vendor/storage-kit/` - Haiku's `AddOnMonitorHandler`/`NodeMonitorHandler`
+  (Storage Kit internals that compile directly into whatever uses them
+  rather than shipping in a library, so they're vendored here rather than
+  requiring a full Haiku source tree just for two classes)
+- `catalogs/` - translated `.catkeys` files (currently German; English is
+  the in-source default)
 
 ## What this is - and isn't
 
@@ -134,15 +156,33 @@ with "Name not found" (see issue #63).
   backlog is big enough (200+ files) to be worth mentioning - if you
   don't see one and it's been a while, something may be stuck; check
   whether index_server is still running.
-- **A previous crash left search stuck**: CLucene keeps a `write.lock`
-  file in its index directory while writing; if index_server was killed
-  forcefully mid-write, a stale lock can make every subsequent write
-  time out. Removing the volume's `FullTextAnalyser/write.lock` file lets
-  it recover (there is currently no automatic detection for this).
+- **A previous crash left search stuck**: CLucene indexing is guarded by
+  `flock()`-based lock files (`index_server.lock`,
+  `index_server_dircreate.lock`) inside each volume's `FullTextAnalyser`
+  directory; these are kernel-enforced per-inode locks, released
+  automatically when the process that held them exits or is killed, so a
+  stale lock after a crash shouldn't normally happen. If writes still time
+  out after a forceful kill, removing those two files from the volume's
+  `FullTextAnalyser` directory lets it recover.
 
 ## Localization
 
 The settings preflet, search app, and index_server's own notifications
 are wired for translation (`B_TRANSLATE`) with a German translation
-included. Contributing more languages upstream goes through
-i18n.haiku-os.org once this merges, not through this repository directly.
+included. Further languages are welcome as pull requests adding a
+`.catkeys` file under `catalogs/`, or via Haiku's own i18n.haiku-os.org
+translation platform if this project's German/English maintainers choose
+to route contributions through there.
+
+## Origin
+
+This started as a fork of [haiku/haiku](https://github.com/haiku/haiku)
+(`src/servers/index/`, `src/add-ons/index_server/`, etc.), reviving
+Clemens Zeidler's original 2010 GSoC project. It moved to its own
+repository once it became clear that landing this as an AI-assisted patch
+series through Haiku's Gerrit review wasn't a realistic path - the code
+itself stays close to Haiku's own coding guidelines and could still be
+proposed upstream later if that changes. The development history (commit
+history, authorship) from the fork is preserved here; earlier issue
+discussion remains archived at
+[Paradoxianer/haiku](https://github.com/Paradoxianer/haiku/issues).
