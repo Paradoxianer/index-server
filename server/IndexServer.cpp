@@ -10,7 +10,10 @@
 
 #include "IndexServer.h"
 
+#include <vector>
+
 #include <Messenger.h>
+#include <OS.h>
 #include <Path.h>
 #include <String.h>
 
@@ -414,12 +417,33 @@ IndexServer::_StopWatchingVolumes()
 {
 	STRACE("_StopWatchingVolumes\n");
 
+	// VolumeWatcher's own destructor already waits for its VolumeWorker
+	// thread (see VolumeWatcher::~VolumeWatcher()) - but that destructor
+	// only runs once BLooper's own Quit() gets around to self-deleting
+	// the watcher, asynchronously on the watcher's own thread, sometime
+	// after it processes the B_QUIT_REQUESTED posted below. Capturing
+	// each watcher's thread_id first and waiting on it afterward
+	// transitively waits for that whole chain - the watcher's own quit,
+	// and inside it, its VolumeWorker - so this function (and therefore
+	// QuitRequested()) doesn't return until every volume has genuinely
+	// finished, instead of racing BApplication's exit() against a
+	// VolumeWorker still mid-AnalyseEntry() on torn-down state (#64).
+	// Every watcher is told to quit first, then waited on - so with
+	// several volumes, they wind down concurrently instead of one after
+	// another.
+	std::vector<thread_id> watcherThreads;
 	for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
 		VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
+		watcherThreads.push_back(watcher->Thread());
 		watcher->Stop();
 		watcher->PostMessage(B_QUIT_REQUESTED);
 	}
 	fVolumeWatcherList.MakeEmpty();
+
+	for (size_t i = 0; i < watcherThreads.size(); i++) {
+		status_t exitValue;
+		wait_for_thread(watcherThreads[i], &exitValue);
+	}
 }
 
 
