@@ -19,6 +19,7 @@
 #include <LayoutBuilder.h>
 #include <MessageRunner.h>
 #include <Messenger.h>
+#include <Mime.h>
 #include <NodeInfo.h>
 #include <Path.h>
 #include <Roster.h>
@@ -52,6 +53,7 @@ static const int32 kLocationColumn = 1;
 static const int32 kScoreColumn = 2;
 static const int32 kSizeColumn = 3;
 static const int32 kModifiedColumn = 4;
+static const int32 kKindColumn = 5;
 
 // Long enough that a fast typist's keystrokes collapse into one search
 // instead of one round trip per character; short enough to still feel
@@ -199,6 +201,28 @@ private:
 };
 
 
+// Same source Tracker's own "Kind" column uses: the MIME type's
+// registered short description ("JPEG image"), falling back to the raw
+// MIME string if the type isn't registered with one, and finally to
+// nothing at all rather than a placeholder for a file with no MIME type.
+BString
+KindDescriptionFor(const entry_ref& ref)
+{
+	BNode node(&ref);
+	BNodeInfo nodeInfo(&node);
+	char mimeType[B_MIME_TYPE_LENGTH];
+	if (node.InitCheck() != B_OK || nodeInfo.GetType(mimeType) != B_OK)
+		return BString();
+
+	BMimeType type(mimeType);
+	char description[B_MIME_TYPE_LENGTH];
+	if (type.GetShortDescription(description) == B_OK)
+		return BString(description);
+
+	return BString(mimeType);
+}
+
+
 }	// namespace
 
 
@@ -236,6 +260,11 @@ SearchWindow::SearchWindow()
 		140, 100, 300);
 	fResultsView->AddColumn(modifiedColumn, kModifiedColumn);
 	modifiedColumn->SetVisible(false);
+
+	BStringColumn* kindColumn = new BStringColumn(B_TRANSLATE("Kind"), 140,
+		80, 300, B_TRUNCATE_END);
+	fResultsView->AddColumn(kindColumn, kKindColumn);
+	kindColumn->SetVisible(false);
 	fResultsView->SetInvocationMessage(new BMessage(kMsgOpenResult));
 	fResultsView->SetSortingEnabled(true);
 
@@ -449,6 +478,9 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 		time_t modified = 0;
 		entry.GetModificationTime(&modified);
 		row->SetField(new BDateField(&modified), kModifiedColumn);
+
+		row->SetField(new BStringField(KindDescriptionFor(ref)),
+			kKindColumn);
 
 		fResultsView->AddRow(row);
 		count++;
