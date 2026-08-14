@@ -14,6 +14,7 @@
 #include <Autolock.h>
 #include <Catalog.h>
 #include <Debug.h>
+#include <Locker.h>
 #include <MessageRunner.h>
 #include <Messenger.h>
 #include <Node.h>
@@ -68,6 +69,50 @@ CompareQueueEntry(const QueueEntry& a, const QueueEntry& b)
 {
 	return a.modified < b.modified;
 }
+
+
+// Process-wide, not per-volume - each mounted volume gets its own
+// CatchUpAnalyser (its own thread), so with several volumes all needing a
+// large catch up at once (a tester's system had 4), running every one of
+// them's heavy query-and-analyze work concurrently multiplies I/O and CPU
+// pressure by however many volumes are involved. Serializing them keeps
+// the peak load the same as catching up a single volume, at the cost of
+// the total time to work through every volume's backlog (see #33).
+BLocker sCatchUpSlot("catch up slot");
+
+
+// Waits for the slot above, but stays responsive to a stop request while
+// waiting - a plain BAutolock would block this looper's thread (and with
+// it, its ability to notice Stop()) indefinitely, potentially for as long
+// as whichever volume currently holds the slot takes to finish its own
+// backlog, which would make shutdown wait on that too.
+class CatchUpSlot {
+public:
+	CatchUpSlot(AnalyserDispatcher* owner)
+		:
+		fAcquired(false)
+	{
+		while (sCatchUpSlot.LockWithTimeout(250000) != B_OK) {
+			if (owner->Stopped())
+				return;
+		}
+		fAcquired = true;
+	}
+
+	~CatchUpSlot()
+	{
+		if (fAcquired)
+			sCatchUpSlot.Unlock();
+	}
+
+	bool Acquired() const
+	{
+		return fAcquired;
+	}
+
+private:
+	bool fAcquired;
+};
 
 
 }	// namespace
@@ -149,6 +194,13 @@ void
 CatchUpAnalyser::_CatchUp()
 {
 	fCatchUpManager->PopulateCatchUp(this);
+
+	CatchUpSlot slot(this);
+	if (!slot.Acquired()) {
+		// Stopped while waiting for another volume's catch up to finish -
+		// nothing was queued or committed yet, nothing to clean up.
+		return;
+	}
 
 	STRACE("_CatchUp start %i, end %i\n", (int)fStart, (int)fEnd);
 	for (int i = 0; i < fFileAnalyserList.CountItems(); i++)

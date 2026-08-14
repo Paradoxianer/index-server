@@ -61,6 +61,16 @@ const bigtime_t kSlowThreshold = 200 * 1000;
 // commit will need.
 const off_t kMinFreeSpaceForCommit = 100 * 1024 * 1024;
 
+// See Commit()'s own comment - pace the thread after a commit by a
+// fraction of however long that commit actually took, instead of a fixed
+// guess. Reported by a tester whose system (80k files on one volume,
+// 170k on another) became sluggish enough during a large catch up that
+// even Deskbar stopped responding - CPU priority was already low
+// (AnalyserDispatcher is B_LOW_PRIORITY), the missing piece was I/O
+// pacing that scales with actual load instead of a near-zero constant.
+const float kCommitPaceFraction = 0.25f;
+const bigtime_t kMaxCommitPace = 2 * 1000 * 1000;
+
 
 namespace {
 
@@ -276,61 +286,89 @@ CLuceneWriteDataBase::Commit()
 		return B_ERROR;
 	}
 
-	// Serializes against every other CLuceneWriteDataBase instance pointed
-	// at the same on-disk directory - live monitoring, catch-up, and even
-	// MailAnalyser's own instances all qualify (see CLuceneFileLock's
-	// comment).
 	bigtime_t lockWaitStart = system_time();
-	CLuceneFileLock lock(fDataBasePath);
-	bigtime_t commitStart = system_time();
-	if (commitStart - lockWaitStart > kSlowThreshold) {
-		STRACE("Commit: waited %" B_PRId64 " ms for the CLucene file lock\n",
-			(commitStart - lockWaitStart) / 1000);
-	}
-
-	// Delete any existing version of a re-added document first - CLucene
-	// has no update, so refreshing a changed file's content is a delete
-	// followed by a re-add.
-	std::vector<entry_ref> addedRefs;
-	for (unsigned int i = 0; i < fAddQueue.size(); i++)
-		addedRefs.push_back(fAddQueue.at(i).ref);
-	_RemoveDocuments(addedRefs);
-	_RemoveDocuments(fDeleteQueue);
-	fDeleteQueue.clear();
-
-	if (fAddQueue.size() == 0)
-		return B_OK;
-
-	fIndexWriter = _OpenIndexWriter();
-	if (fIndexWriter == NULL)
-		return B_ERROR;
-
-	// One document that _IndexDocument() can never index (e.g. content
-	// over kMaxFieldLength) must not take the rest of this batch down with
-	// it - keep going for whatever's left in the queue, only actually
-	// giving up if the writer itself died (fIndexWriter went NULL inside
-	// _IndexDocument()'s own reopen-and-retry loop), since every other
-	// document would fail immediately too - see kMaxFieldLength's comment.
+	bigtime_t commitStart;
 	status_t status = B_OK;
-	for (unsigned int i = 0; i < fAddQueue.size(); i++) {
-		if (!_IndexDocument(fAddQueue.at(i))) {
-			status = B_ERROR;
-			if (fIndexWriter == NULL)
-				break;
+	bool didWork = false;
+	{
+		// Serializes against every other CLuceneWriteDataBase instance
+		// pointed at the same on-disk directory - live monitoring,
+		// catch-up, and even MailAnalyser's own instances all qualify
+		// (see CLuceneFileLock's comment). Scoped to release before the
+		// pacing snooze below, so a concurrent Search() waiting on this
+		// same lock isn't also made to wait out this commit's pace.
+		CLuceneFileLock lock(fDataBasePath);
+		commitStart = system_time();
+		if (commitStart - lockWaitStart > kSlowThreshold) {
+			STRACE("Commit: waited %" B_PRId64
+				" ms for the CLucene file lock\n",
+				(commitStart - lockWaitStart) / 1000);
 		}
-	}
 
-	fAddQueue.clear();
-	if (fIndexWriter != NULL) {
-		fIndexWriter->close();
-		delete fIndexWriter;
-		fIndexWriter = NULL;
+		// Delete any existing version of a re-added document first -
+		// CLucene has no update, so refreshing a changed file's content is
+		// a delete followed by a re-add.
+		std::vector<entry_ref> addedRefs;
+		for (unsigned int i = 0; i < fAddQueue.size(); i++)
+			addedRefs.push_back(fAddQueue.at(i).ref);
+		_RemoveDocuments(addedRefs);
+		_RemoveDocuments(fDeleteQueue);
+		fDeleteQueue.clear();
+
+		if (fAddQueue.size() == 0)
+			return B_OK;
+
+		fIndexWriter = _OpenIndexWriter();
+		if (fIndexWriter == NULL)
+			return B_ERROR;
+
+		didWork = true;
+
+		// One document that _IndexDocument() can never index (e.g.
+		// content over kMaxFieldLength) must not take the rest of this
+		// batch down with it - keep going for whatever's left in the
+		// queue, only actually giving up if the writer itself died
+		// (fIndexWriter went NULL inside _IndexDocument()'s own
+		// reopen-and-retry loop), since every other document would fail
+		// immediately too - see kMaxFieldLength's comment.
+		for (unsigned int i = 0; i < fAddQueue.size(); i++) {
+			if (!_IndexDocument(fAddQueue.at(i))) {
+				status = B_ERROR;
+				if (fIndexWriter == NULL)
+					break;
+			}
+		}
+
+		fAddQueue.clear();
+		if (fIndexWriter != NULL) {
+			fIndexWriter->close();
+			delete fIndexWriter;
+			fIndexWriter = NULL;
+		}
 	}
 
 	bigtime_t commitElapsed = system_time() - commitStart;
 	if (commitElapsed > kSlowThreshold) {
 		STRACE("Commit: took %" B_PRId64 " ms total\n",
 			commitElapsed / 1000);
+	}
+
+	// Adaptive pacing: a fixed pause guesses wrong in both directions -
+	// too short to matter against a large/slow commit, too long against a
+	// small/fast one. Scaling to what this commit actually just cost
+	// keeps the overhead proportional without needing to measure or
+	// tune anything - fast commits (small volume, fast disk, nothing else
+	// contending) barely pause at all, slow ones (large segment flush,
+	// slow/removable media, several volumes committing at once) back off
+	// the most, right when the rest of the system needs the room most.
+	// Capped so one pathologically slow commit doesn't stall this thread
+	// for an outsized pause.
+	if (didWork) {
+		bigtime_t pace = (bigtime_t)(commitElapsed * kCommitPaceFraction);
+		if (pace > kMaxCommitPace)
+			pace = kMaxCommitPace;
+		if (pace > 0)
+			snooze(pace);
 	}
 
 	return status;
