@@ -1,5 +1,5 @@
 name			index_server
-version			1.0.0-3
+version			1.0.0-4
 architecture	x86_64
 summary			"Live content indexing and full-text search for Haiku"
 description		"Watches your volumes and keeps a full-text index (via CLucene)
