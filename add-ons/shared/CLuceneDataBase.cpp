@@ -15,9 +15,12 @@
 #include <sys/file.h>
 #include <unistd.h>
 
+#include <fs_info.h>
+
 #include <Directory.h>
 #include <Entry.h>
 #include <UnicodeChar.h>
+#include <Volume.h>
 
 
 #define DEBUG_CLUCENE_DATABASE
@@ -50,6 +53,13 @@ const int32 kMaxFieldLength = 1000000;
 // See FullTextAnalyser.cpp's kSlowEntryThreshold - same reasoning, kept in
 // sync deliberately.
 const bigtime_t kSlowThreshold = 200 * 1000;
+
+// A conservative heuristic, not measured against real segment-merge sizes
+// (a single observed segment file was already 200+MB on a large volume) -
+// meant only to catch "clearly not enough room left to write anything"
+// before CLucene's own I/O does, not to predict exactly how much a given
+// commit will need.
+const off_t kMinFreeSpaceForCommit = 100 * 1024 * 1024;
 
 
 namespace {
@@ -236,6 +246,35 @@ CLuceneWriteDataBase::Commit()
 	if (fAddQueue.size() == 0 && fDeleteQueue.size() == 0)
 		return B_OK;
 	STRACE("Commit\n");
+
+	// CLucene's own I/O failures aren't something a try/catch here can
+	// reliably guard against: a write failure surfacing from inside a
+	// destructor during a segment flush (out of space, a read-only or
+	// unplugged volume) calls std::terminate() immediately - C++11
+	// destructors are implicitly noexcept, so that happens before any
+	// catch clause up the stack, no matter how this call is wrapped, and
+	// takes the whole server down (see #29). Check the actual
+	// precondition instead of trying to catch the failure after the
+	// fact. The queue is left untouched on either check failing - not
+	// cleared, not retried immediately - so queued documents just wait
+	// for a later Commit() once the volume is writable/has room again,
+	// instead of being silently dropped.
+	BVolume volume(dev_for_path(fDataBasePath.Path()));
+	if (volume.InitCheck() != B_OK) {
+		STRACE("Commit: can't check volume for %s, deferring\n",
+			fDataBasePath.Path());
+		return B_ERROR;
+	}
+	if (volume.IsReadOnly()) {
+		STRACE("Commit: %s is read-only, deferring\n",
+			fDataBasePath.Path());
+		return B_ERROR;
+	}
+	if (volume.FreeBytes() < kMinFreeSpaceForCommit) {
+		STRACE("Commit: %s has only %" B_PRId64 " bytes free, deferring\n",
+			fDataBasePath.Path(), volume.FreeBytes());
+		return B_ERROR;
+	}
 
 	// Serializes against every other CLuceneWriteDataBase instance pointed
 	// at the same on-disk directory - live monitoring, catch-up, and even
