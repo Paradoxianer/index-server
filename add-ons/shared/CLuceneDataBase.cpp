@@ -22,6 +22,8 @@
 #include <UnicodeChar.h>
 #include <Volume.h>
 
+#include "RunWithTimeout.h"
+
 
 #define DEBUG_CLUCENE_DATABASE
 #ifdef DEBUG_CLUCENE_DATABASE
@@ -70,6 +72,14 @@ const off_t kMinFreeSpaceForCommit = 100 * 1024 * 1024;
 // pacing that scales with actual load instead of a near-zero constant.
 const float kCommitPaceFraction = 0.25f;
 const bigtime_t kMaxCommitPace = 2 * 1000 * 1000;
+
+// A slow or misbehaving filesystem driver - a flaky removable FAT/FAT32
+// volume, in particular - shouldn't be able to hang this any more than a
+// translator plugin should (see RunWithTimeout.h). Deferring
+// CLuceneWriteDataBase's construction to first use (#30) already got this
+// off the app's own startup path; this bounds how long it can block
+// whatever *does* end up triggering it.
+const bigtime_t kDirectoryCreateTimeout = 10 * 1000000;
 
 
 namespace {
@@ -151,6 +161,31 @@ private:
 };
 
 
+// Owns the path itself rather than pointing at the caller's stack local:
+// on timeout, ownership passes to the still-running helper thread (see
+// RunWithTimeout.h), which may still be using it.
+struct create_directory_cookie {
+	BPath	path;
+};
+
+
+status_t
+do_create_directory(void* data)
+{
+	create_directory_cookie* cookie = (create_directory_cookie*)data;
+	CLuceneDirectoryCreateLock lock(cookie->path);
+	create_directory(cookie->path.Path(), 0755);
+	return B_OK;
+}
+
+
+void
+cleanup_create_directory(void* data)
+{
+	delete (create_directory_cookie*)data;
+}
+
+
 }	// namespace
 
 
@@ -186,8 +221,25 @@ CLuceneWriteDataBase::CLuceneWriteDataBase(const BPath& databasePath)
 	fIndexWriter(NULL)
 {
 	printf("CLuceneWriteDataBase fDataBasePath %s\n", fDataBasePath.Path());
-	CLuceneDirectoryCreateLock lock(fDataBasePath);
-	create_directory(fDataBasePath.Path(), 0755);
+
+	create_directory_cookie* cookie = new create_directory_cookie;
+	cookie->path = fDataBasePath;
+	status_t status = run_with_timeout(do_create_directory, cookie,
+		cleanup_create_directory, kDirectoryCreateTimeout);
+	if (status == B_TIMED_OUT) {
+		// cookie now belongs to the still-running helper thread; don't
+		// touch it here. The directory may or may not exist by the time
+		// that thread eventually finishes - every operation below
+		// already handles a missing/inaccessible directory as a
+		// non-fatal I/O failure (see Commit()'s volume checks, and the
+		// try/catch around CLucene's own calls), so this just means
+		// those keep failing gracefully until the volume recovers,
+		// rather than this constructor hanging along with it.
+		STRACE("directory create/lock for %s timed out after %" B_PRId64
+			" s\n", fDataBasePath.Path(), kDirectoryCreateTimeout / 1000000);
+		return;
+	}
+	cleanup_create_directory(cookie);
 }
 
 
