@@ -137,10 +137,21 @@ FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)
 	fNUncommited(0)
 {
 	fDataBasePath = volume_index_server_directory(volume);
-	status_t status = fDataBasePath.Append(kFullTextDirectory);
+	fDataBasePath.Append(kFullTextDirectory);
 
-	if (status == B_OK)
-		fWriteDataBase = new CLuceneWriteDataBase(fDataBasePath);
+	// fWriteDataBase is deliberately not constructed here - see
+	// _WriteDataBase()'s comment. This constructor runs synchronously,
+	// once per volume, from IndexServer::ReadyToRun() -> AddVolume() for
+	// every mounted volume at once, before the app can process any other
+	// message (including a quit request). CLuceneWriteDataBase's own
+	// constructor creates a directory and takes a flock() - fine for a
+	// healthy volume, but there is nothing bounding how long that can
+	// take against a slow or misbehaving filesystem driver (a flaky
+	// removable FAT/FAT32 volume, for instance), and unlike translator
+	// calls (see RunWithTimeout.h) this had no timeout at all - a single
+	// bad volume could hang index_server's startup entirely, which,
+	// depending on what else in the boot sequence waits on it, can look
+	// like the whole system failing to boot.
 }
 
 
@@ -154,12 +165,20 @@ FullTextAnalyser::~FullTextAnalyser()
 status_t
 FullTextAnalyser::InitCheck()
 {
-	if (fDataBasePath.InitCheck() != B_OK)
-		return fDataBasePath.InitCheck();
-	if (!fWriteDataBase)
-		return B_NO_MEMORY;
+	return fDataBasePath.InitCheck();
+}
 
-	return fWriteDataBase->InitCheck();
+
+// Constructs fWriteDataBase on first actual use (the first real entry_ref
+// this analyser is asked to do something with) instead of eagerly in the
+// constructor - see its comment. Everything that touches fWriteDataBase
+// goes through this instead of the member directly.
+CLuceneWriteDataBase*
+FullTextAnalyser::_WriteDataBase()
+{
+	if (fWriteDataBase == NULL)
+		fWriteDataBase = new CLuceneWriteDataBase(fDataBasePath);
+	return fWriteDataBase;
 }
 
 
@@ -175,7 +194,7 @@ FullTextAnalyser::AnalyseEntry(const entry_ref& ref)
 
 	//STRACE("FullTextAnalyser AnalyseEntry: %s %s\n", ref.name, path.Path());
 	if (_IsPlainText(ref)) {
-		fWriteDataBase->AddDocument(ref);
+		_WriteDataBase()->AddDocument(ref);
 	} else if (!_QueueTranslated(ref)) {
 		_ReportSlowEntry(ref, start, "translate failed");
 		return;
@@ -217,7 +236,7 @@ FullTextAnalyser::DeleteEntry(const entry_ref& ref)
 	if (_IsInIndexDirectory(ref))
 		return;
 	STRACE("FullTextAnalyser DeleteEntry: %s\n", ref.name);
-	fWriteDataBase->RemoveDocument(ref);
+	_WriteDataBase()->RemoveDocument(ref);
 }
 
 
@@ -227,7 +246,7 @@ FullTextAnalyser::MoveEntry(const entry_ref& oldRef, const entry_ref& newRef)
 	if (!_InterestingEntry(newRef))
 		return;
 	STRACE("FullTextAnalyser MoveEntry: %s to %s\n", oldRef.name, newRef.name);
-	fWriteDataBase->RemoveDocument(oldRef);
+	_WriteDataBase()->RemoveDocument(oldRef);
 	AnalyseEntry(newRef);
 }
 
@@ -235,7 +254,14 @@ FullTextAnalyser::MoveEntry(const entry_ref& oldRef, const entry_ref& newRef)
 void
 FullTextAnalyser::LastEntry()
 {
-	fWriteDataBase->Commit();
+	// Checked directly (not via _WriteDataBase()) - nothing could be
+	// queued without going through that accessor first, so if it's still
+	// NULL there is truly nothing to commit, and constructing it here
+	// just to immediately no-op would undo the point of deferring it in
+	// the first place (a volume with nothing to analyse would otherwise
+	// still pay for the directory/lock setup on every catch up run).
+	if (fWriteDataBase != NULL)
+		fWriteDataBase->Commit();
 	_DeletePendingTempFiles();
 	fNUncommited = 0;
 }
@@ -262,7 +288,7 @@ FullTextAnalyser::HandleQuery(const BMessage& query, BMessage& reply)
 	if (query.FindInt32("offset", &requestedOffset) == B_OK)
 		offset = requestedOffset;
 
-	return fWriteDataBase->Search(queryString, offset, maxResults, reply);
+	return _WriteDataBase()->Search(queryString, offset, maxResults, reply);
 }
 
 
@@ -427,7 +453,7 @@ FullTextAnalyser::_QueueTranslated(const entry_ref& ref)
 		return false;
 	}
 
-	fWriteDataBase->AddDocumentFromContentFile(ref, tempPath);
+	_WriteDataBase()->AddDocumentFromContentFile(ref, tempPath);
 	fPendingTempFiles.push_back(tempPath.Path());
 	return true;
 }

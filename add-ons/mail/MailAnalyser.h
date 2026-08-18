@@ -11,6 +11,8 @@
 
 #include "IndexServerAddOn.h"
 
+#include <Path.h>
+
 
 class CLuceneWriteDataBase;
 
@@ -29,7 +31,11 @@ public:
 
 private:
 			bool				_IsMailFile(const entry_ref& ref);
+			//! Constructs fWriteDataBase on first use rather than in the
+			//! constructor - see its call sites' comment.
+			CLuceneWriteDataBase*	_WriteDataBase();
 
+			BPath				fDataBasePath;
 			CLuceneWriteDataBase*	fWriteDataBase;
 };
 

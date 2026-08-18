@@ -51,6 +51,10 @@ private:
 	inline	bool				_IsPlainText(const entry_ref& ref);
 	inline	bool				_LooksLikeBinary(const entry_ref& ref);
 
+				//! Constructs fWriteDataBase on first use rather than in
+				//! the constructor - see its call sites' comment.
+				CLuceneWriteDataBase*	_WriteDataBase();
+
 			//! Translates ref to a temp plain-text file next to the
 			//! index (kTranslateTimeout-bounded) and queues it for
 			//! indexing. The temp path is remembered in

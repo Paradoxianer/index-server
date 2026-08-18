@@ -79,11 +79,16 @@ cleanup_mail_body(void* data)
 
 MailAnalyser::MailAnalyser(BString name, const BVolume& volume)
 	:
-	FileAnalyser(name, volume)
+	FileAnalyser(name, volume),
+	fWriteDataBase(NULL)
 {
-	BPath dataBasePath = volume_index_server_directory(volume);
-	dataBasePath.Append(kFullTextDirectory);
-	fWriteDataBase = new CLuceneWriteDataBase(dataBasePath);
+	fDataBasePath = volume_index_server_directory(volume);
+	fDataBasePath.Append(kFullTextDirectory);
+
+	// Not constructed here - see FullTextAnalyser's identical constructor
+	// comment (this class has the same eager-construction risk during
+	// IndexServer::ReadyToRun() -> AddVolume(), and points at the same
+	// on-disk directory besides).
 }
 
 
@@ -96,7 +101,16 @@ MailAnalyser::~MailAnalyser()
 status_t
 MailAnalyser::InitCheck()
 {
-	return fWriteDataBase->InitCheck();
+	return fDataBasePath.InitCheck();
+}
+
+
+CLuceneWriteDataBase*
+MailAnalyser::_WriteDataBase()
+{
+	if (fWriteDataBase == NULL)
+		fWriteDataBase = new CLuceneWriteDataBase(fDataBasePath);
+	return fWriteDataBase;
 }
 
 
@@ -143,7 +157,7 @@ MailAnalyser::AnalyseEntry(const entry_ref& ref)
 		return;
 	}
 
-	fWriteDataBase->AddDocumentWithText(ref, cookie->body);
+	_WriteDataBase()->AddDocumentWithText(ref, cookie->body);
 	delete cookie;
 }
 
@@ -155,14 +169,17 @@ MailAnalyser::DeleteEntry(const entry_ref& ref)
 	// notification arrives, so BNodeInfo::GetType() can't succeed anyway
 	// (same reasoning as FullTextAnalyser::DeleteEntry). Removing a path
 	// that was never indexed is a harmless no-op in CLucene.
-	fWriteDataBase->RemoveDocument(ref);
+	_WriteDataBase()->RemoveDocument(ref);
 }
 
 
 void
 MailAnalyser::LastEntry()
 {
-	fWriteDataBase->Commit();
+	// Checked directly, not via _WriteDataBase() - see
+	// FullTextAnalyser::LastEntry()'s identical reasoning.
+	if (fWriteDataBase != NULL)
+		fWriteDataBase->Commit();
 }
 
 
