@@ -52,6 +52,11 @@ APP_VERSION :=
 DRIVER_PATH =
 
 ## Include the Makefile-Engine
-DEVEL_DIRECTORY := \
-	$(shell findpaths -r "makefile_engine" B_FIND_PATH_DEVELOP_DIRECTORY)
-include $(DEVEL_DIRECTORY)/etc/makefile-engine
+# findpaths -r "makefile_engine" (the standard template's own approach)
+# depends on a resolvable-name package lookup that has proven unreliable
+# on this VM (observed failing outright after heavy package/build
+# activity, for reasons not fully understood) - the plain well-known
+# system path is what that lookup resolves to anyway on a standard
+# install, so use it directly instead of routing through a lookup that
+# can spuriously fail.
+include /boot/system/develop/etc/makefile-engine

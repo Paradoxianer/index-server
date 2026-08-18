@@ -33,6 +33,6 @@ LINKER_FLAGS =
 APP_VERSION :=
 DRIVER_PATH =
 
-DEVEL_DIRECTORY := \
-	$(shell findpaths -r "makefile_engine" B_FIND_PATH_DEVELOP_DIRECTORY)
-include $(DEVEL_DIRECTORY)/etc/makefile-engine
+# findpaths -r "makefile_engine" has proven unreliable on this VM (see
+# server/Makefile's comment) - use the well-known system path directly.
+include /boot/system/develop/etc/makefile-engine
