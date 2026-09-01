@@ -9,6 +9,8 @@
 
 #include <stdlib.h>
 
+#include <vector>
+
 #include <Application.h>
 #include <Bitmap.h>
 #include <Button.h>
@@ -16,10 +18,12 @@
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
 #include <Entry.h>
+#include <File.h>
 #include <LayoutBuilder.h>
 #include <MessageRunner.h>
 #include <Messenger.h>
 #include <Mime.h>
+#include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
 #include <Roster.h>
@@ -48,6 +52,12 @@ static const uint32 kMsgLiveFilter = 'LFlt';
 static const uint32 kMsgLoadMore = 'LdMr';
 static const uint32 kMsgOpenResult = 'Open';
 
+// Tracker's well-known signature (tracker_private.h's kTrackerSignature,
+// not pulled in here to avoid depending on a private Tracker header for
+// one string) - see _OpenSelected()'s comment for why a result is opened
+// by messaging Tracker rather than launching an app directly.
+static const char* const kTrackerSignature = "application/x-vnd.Be-TRAK";
+
 static const int32 kNameColumn = 0;
 static const int32 kLocationColumn = 1;
 static const int32 kScoreColumn = 2;
@@ -62,6 +72,12 @@ static const bigtime_t kLiveFilterDelay = 350000;
 
 // How many results one request (initial or "Load more") fetches.
 static const int32 kResultsPerPage = 100;
+
+// A cap on scanning a file client-side for the query words' first matching
+// line (see _FindMatchingLine()) - not the same limit as the index side's
+// kMaxIndexableFileSize, just meant to keep double-clicking a result from
+// ever visibly stalling the UI on a pathologically large text file.
+static const off_t kMaxLineSearchFileSize = 8 * 1024 * 1024;
 
 
 namespace {
@@ -220,6 +236,87 @@ KindDescriptionFor(const entry_ref& ref)
 		return BString(description);
 
 	return BString(mimeType);
+}
+
+
+// Lucene query syntax (AND/OR/NOT, +required/-excluded, "phrases", a
+// trailing */~ modifier) doesn't matter here - just want the plain words a
+// person actually typed, to look for in the file's own text.
+void
+ExtractQueryWords(const BString& query, std::vector<BString>& words)
+{
+	BString cleaned(query);
+	cleaned.ReplaceAll("\"", " ");
+
+	int32 start = 0;
+	while (start < cleaned.Length()) {
+		int32 end = cleaned.FindFirst(' ', start);
+		if (end < 0)
+			end = cleaned.Length();
+
+		BString word;
+		cleaned.CopyInto(word, start, end - start);
+		word.Trim();
+
+		while (word.Length() > 0 && (word[0] == '+' || word[0] == '-'))
+			word.Remove(0, 1);
+		while (word.Length() > 0
+			&& (word[word.Length() - 1] == '*'
+				|| word[word.Length() - 1] == '~')) {
+			word.Truncate(word.Length() - 1);
+		}
+
+		if (word.Length() > 0 && word != "AND" && word != "OR"
+			&& word != "NOT") {
+			words.push_back(word);
+		}
+
+		start = end + 1;
+	}
+}
+
+
+// Our CLucene index has no per-match line/offset info to draw on (#21) -
+// scan the file itself for the first line containing any of the query's
+// words, the same underlying information Haiku's own text_search uses for
+// its "open in editor" feature (it gets its line numbers from grep -n
+// instead of an index).
+int32
+FindMatchingLine(const BPath& path, const std::vector<BString>& words)
+{
+	BFile file(path.Path(), B_READ_ONLY);
+	off_t size;
+	if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK
+		|| size <= 0 || size > kMaxLineSearchFileSize) {
+		return -1;
+	}
+
+	BString content;
+	char* buffer = content.LockBuffer(size);
+	ssize_t bytesRead = file.Read(buffer, size);
+	content.UnlockBuffer(bytesRead > 0 ? bytesRead : 0);
+	if (bytesRead <= 0)
+		return -1;
+
+	int32 lineNumber = 1;
+	int32 lineStart = 0;
+	while (lineStart <= content.Length()) {
+		int32 lineEnd = content.FindFirst('\n', lineStart);
+		if (lineEnd < 0)
+			lineEnd = content.Length();
+
+		BString line;
+		content.CopyInto(line, lineStart, lineEnd - lineStart);
+		for (size_t i = 0; i < words.size(); i++) {
+			if (line.IFindFirst(words[i]) >= 0)
+				return lineNumber;
+		}
+
+		lineNumber++;
+		lineStart = lineEnd + 1;
+	}
+
+	return -1;
 }
 
 
@@ -523,7 +620,47 @@ SearchWindow::_OpenSelected()
 		return;
 
 	entry_ref ref = row->Ref();
-	be_roster->Launch(&ref);
+
+	BNode node(&ref);
+	BNodeInfo nodeInfo(&node);
+	char mimeType[B_MIME_TYPE_LENGTH];
+	bool isText = node.InitCheck() == B_OK
+		&& nodeInfo.GetType(mimeType) == B_OK
+		&& strncasecmp(mimeType, "text/", 5) == 0;
+
+	// "Open at the matching line" (#21) only makes sense for a file an
+	// editor can meaningfully jump to a line in - a translated PDF or
+	// image has no line numbers of its own to speak of, so this is
+	// deliberately narrower than what actually gets indexed.
+	int32 lineNumber = -1;
+	if (isText) {
+		std::vector<BString> words;
+		ExtractQueryWords(BString(fQueryControl->Text()), words);
+		if (!words.empty())
+			lineNumber = FindMatchingLine(BPath(&ref), words);
+	}
+
+	BMessage message(B_REFS_RECEIVED);
+	message.AddRef("refs", &ref);
+	if (lineNumber > 0)
+		message.AddInt32("be:line", lineNumber);
+
+	// Routed through Tracker rather than resolving/launching the target
+	// app ourselves. This is the same path /bin/open uses for its own
+	// "file:line" argument - Tracker's own ref-open handling already
+	// knows how to pick the right app for a ref, and specifically copies
+	// over any "be:*" fields (see Tracker.cpp's own comment: "e.g.
+	// /bin/open may include be:line and be:column") to whatever it
+	// launches. Resolving a preferred app ourselves (BMimeType::
+	// GetPreferredApp(), the approach Haiku's own text_search uses) is
+	// both more code and less reliable - it returned "no such file" for
+	// plain text/plain on this system, despite `open somefile.txt:3`
+	// correctly landing on the right line in StyledEdit moments earlier.
+	BMessenger tracker(kTrackerSignature);
+	if (tracker.IsValid())
+		tracker.SendMessage(&message);
+	else
+		be_roster->Launch(&ref);
 }
 
 
