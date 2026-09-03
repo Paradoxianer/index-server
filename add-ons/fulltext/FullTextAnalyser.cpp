@@ -14,6 +14,7 @@
 #include <Autolock.h>
 #include <File.h>
 #include <Locker.h>
+#include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
@@ -305,6 +306,19 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 			|| size > kMaxIndexableFileSize)
 			return false;
 	}
+
+	// A freshly-created file (a temp file from an atomic save - e.g. this
+	// project's own build log, the exact reproduction that led to this)
+	// commonly has no MIME type set yet, so _IsPlainText()'s attribute
+	// check alone would miss it and this would fall through to
+	// BTranslatorRoster below for content that's actually just text.
+	// update_mime_info() sniffs and fills in a missing type using the
+	// Storage Kit's own content-sniffer rules (what "mimeset" wraps) -
+	// entirely separate from, and much simpler than, BTranslatorRoster,
+	// so this doesn't touch the translator machinery at all.
+	// B_UPDATE_MIME_INFO_NO_FORCE leaves an already-set type alone.
+	BPath path(&ref);
+	update_mime_info(path.Path(), 0, 1, B_UPDATE_MIME_INFO_NO_FORCE);
 
 	// Plain text is always indexable content on its own - no translator can
 	// even produce B_TRANSLATOR_TEXT from it, so asking BTranslatorRoster to
