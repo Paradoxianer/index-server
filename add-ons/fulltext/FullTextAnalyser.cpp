@@ -8,6 +8,7 @@
 #include "FullTextAnalyser.h"
 
 #include <new>
+#include <set>
 #include <string.h>
 #include <strings.h>
 
@@ -124,6 +125,65 @@ cleanup_translate(void* data)
 	delete cookie->source;
 	delete cookie->destination;
 	delete cookie;
+}
+
+
+// MIME types compare case-insensitively per BMimeType's own documented
+// equality rule (see #49).
+struct CaseInsensitiveLess {
+	bool operator()(const BString& a, const BString& b) const
+	{
+		return a.ICompare(b) < 0;
+	}
+};
+
+
+// The MIME types any installed translator actually declares as input,
+// built once, lazily, the first time it's needed rather than eagerly at
+// startup (same reasoning as _WriteDataBase() - this must not add its own
+// delay to IndexServer::ReadyToRun()). BTranslatorRoster::Default() is one
+// process-wide roster (see sTranslatorLock above), so this cache is
+// process-wide too, guarded by the same lock since building it calls into
+// that same roster object.
+static std::set<BString, CaseInsensitiveLess>* sSupportedMimeTypes = NULL;
+
+
+// Whether some installed translator actually declares mimeType as a format
+// it can read. BTranslatorRoster::Identify() itself asks every registered
+// translator regardless of hint - the hintMIME parameter is purely
+// advisory, and #27 found that STXTTranslator doesn't even honor its own
+// declared input formats ("text/plain", "text/x-vnd.Be-stxt" only) when
+// deciding what to claim. So this can't be enforced by passing a hint into
+// Identify(); it has to gate the call from here, before Identify() is ever
+// reached at all.
+bool
+translator_supports_mime_type(const char* mimeType)
+{
+	BAutolock lock(sTranslatorLock);
+	if (sSupportedMimeTypes == NULL) {
+		sSupportedMimeTypes = new std::set<BString, CaseInsensitiveLess>;
+
+		translator_id* ids;
+		int32 count;
+		if (BTranslatorRoster::Default()->GetAllTranslators(&ids, &count)
+				== B_OK) {
+			for (int32 i = 0; i < count; i++) {
+				const translation_format* formats;
+				int32 numFormats;
+				if (BTranslatorRoster::Default()->GetInputFormats(ids[i],
+						&formats, &numFormats) != B_OK) {
+					continue;
+				}
+				for (int32 j = 0; j < numFormats; j++) {
+					if (formats[j].MIME[0] != '\0')
+						sSupportedMimeTypes->insert(formats[j].MIME);
+				}
+			}
+			delete[] ids;
+		}
+	}
+
+	return sSupportedMimeTypes->find(mimeType) != sSupportedMimeTypes->end();
 }
 
 
@@ -328,8 +388,24 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	if (_IsPlainText(ref))
 		return true;
 
-	if (_LooksLikeBinary(ref))
-		return false;
+	// Only bother asking BTranslatorRoster to Identify() this at all if some
+	// installed translator actually claims to read this MIME type - an
+	// object file, a stripped binary, a browser's sqlite journal are never
+	// going to translate to text no matter which translator looks at them,
+	// and having one look anyway is exactly how #27's crashes happened.
+	// This replaces the previous NUL-byte "looks like binary" heuristic,
+	// which - being blind to what's actually installed - rejected true
+	// translator-eligible content just as readily as genuine junk (a real
+	// image is exactly as "binary" as a stripped ELF by that heuristic).
+	{
+		BNode node(&ref);
+		char mimeType[B_MIME_TYPE_LENGTH];
+		BNodeInfo nodeInfo(&node);
+		if (node.InitCheck() != B_OK || nodeInfo.GetType(mimeType) != B_OK
+				|| !translator_supports_mime_type(mimeType)) {
+			return false;
+		}
+	}
 
 	identify_cookie* cookie = new(std::nothrow) identify_cookie;
 	if (cookie == NULL)
@@ -372,47 +448,6 @@ FullTextAnalyser::_IsPlainText(const entry_ref& ref)
 	// equality rule (see #49).
 	return node.InitCheck() == B_OK && nodeInfo.GetType(mimeType) == B_OK
 		&& strncasecmp(mimeType, "text/", 5) == 0;
-}
-
-
-// A NUL byte anywhere in the first few KB is the same heuristic git and
-// "grep -I" use to call a file binary - genuine text (any encoding this
-// system produces or expects) never contains one. #47 already stopped
-// feeding known-text files to BTranslatorRoster; this catches the
-// opposite and, in practice, more common case on a real system:
-// compiled objects, archives, stripped binaries, browser cache files -
-// ordinary byproducts of ordinary use, not anything unusual - that a
-// buggy translator has been observed corrupting memory on when handed
-// to Identify()/Translate() anyway (#27/#68). A real translator addon
-// (an image codec on truncated/malformed input, for instance) still
-// gets a chance normally; this only skips content that's unambiguously
-// not text to begin with, before it ever reaches that gauntlet.
-bool
-FullTextAnalyser::_LooksLikeBinary(const entry_ref& ref)
-{
-	BFile file(&ref, B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return false;
-
-	const size_t kSniffSize = 8000;
-	char buffer[kSniffSize];
-	ssize_t bytesRead = file.Read(buffer, kSniffSize);
-	if (bytesRead <= 0) {
-		// Not "safely proven text" - could be a genuinely empty file (no
-		// content to index either way, nothing lost by skipping it), or
-		// - observed live - a file whose B_ENTRY_CREATED notification is
-		// processed before its writer's data has actually landed, racing
-		// to read 0 bytes of a file that reports a real size moments
-		// later (see #28: StatChanged() currently doesn't re-trigger
-		// analysis on its own, so this specific race can mean a file
-		// created-then-filled only gets indexed on the next catch-up,
-		// not live - a separate, pre-existing gap). Either way, treating
-		// "couldn't confirm it's text" as "don't risk the translator" is
-		// the safe default, not the other way round.
-		return true;
-	}
-
-	return memchr(buffer, 0, bytesRead) != NULL;
 }
 
 

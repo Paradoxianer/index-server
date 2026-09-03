@@ -49,7 +49,6 @@ private:
 	inline	bool				_InterestingEntry(const entry_ref& ref);
 	inline	bool				_IsInIndexDirectory(const entry_ref& ref);
 	inline	bool				_IsPlainText(const entry_ref& ref);
-	inline	bool				_LooksLikeBinary(const entry_ref& ref);
 
 				//! Constructs fWriteDataBase on first use rather than in
 				//! the constructor - see its call sites' comment.
