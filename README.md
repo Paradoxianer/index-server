@@ -3,10 +3,26 @@
 <img src="docs/icon-index_server.png" width="64" height="64" align="left" alt="">
 
 A live content-indexing service for Haiku, originally started by Clemens
-Zeidler (GSoC 2010) and revived here. Watches your volumes, keeps a set of
-add-ons ("analysers") up to date about every file that changes, and lets
-those add-ons decide what's worth remembering about it - a full-text index,
-a few BFS attributes, or nothing at all.
+Zeidler (GSoC 2010) and revived here. Watches your volumes and keeps a set
+of independent add-ons ("analysers") up to date about every file that
+changes, each deciding for itself what's worth remembering about it:
+
+- **Full-text search** - FullTextAnalyser and MailAnalyser feed anything
+  BTranslatorRoster can turn into plain text (documents, mail, and whatever
+  a translator you install later can read - an OCR translator for scanned
+  images, for instance) into a CLucene index, searchable through the
+  bundled `IndexServerSearch` window with real query syntax.
+- **Metadata as BFS attributes** - EXIF camera/date info, audio tags,
+  media codec/duration/resolution details. These show up in Tracker's own
+  Find panel and live queries immediately, no separate tool needed.
+- **Automatic thumbnails** - ThumbnailAnalyser generates a 128x128 preview
+  for every image (and HVIF vector icon) it sees and writes it to the same
+  `Media:Thumbnail` attribute Tracker itself reads when drawing large
+  icons, so files get a real preview instead of a generic file-type icon
+  without Tracker needing to decode anything itself.
+
+Each analyser can be enabled or disabled independently, and adding a new
+one doesn't require touching any of the others.
 
 Builds against a plain Haiku devel install (`clucene_devel`, `taglib_devel`,
 `libexif_devel`) using the standard Makefile-Engine - no full Haiku source
@@ -58,6 +74,7 @@ doesn't affect the others.
 | AudioTagAnalyser | Artist/Title/Album | BFS attributes (`Audio:Artist`, `Media:Title`, `Audio:Album`) |
 | ExifAnalyser | Camera make/model, date taken, pixel dimensions (JPEG/TIFF only) | BFS attributes (`EXIF:*`) |
 | MediaKitAnalyser | Codec, duration, video resolution | BFS attributes (`Media:Codec`, `Media:Length`, `Media:Width`/`Height`) |
+| ThumbnailAnalyser | 128x128 preview of any image (or HVIF vector icon) BTranslatorRoster can decode | BFS attributes (`Media:Thumbnail`, `Media:Thumbnail:CreationTime`) - the same ones Tracker itself reads for icon previews |
 
 Because BTranslatorRoster is the whole basis of FullTextAnalyser, whatever
 formats it can convert to text automatically become full-text searchable -
