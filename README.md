@@ -1,6 +1,6 @@
 # index-server
 
-<img src="docs/icon.png" width="64" height="64" align="left" alt="">
+<img src="docs/icon-index_server.png" width="64" height="64" align="left" alt="">
 
 A live content-indexing service for Haiku, originally started by Clemens
 Zeidler (GSoC 2010) and revived here. Watches your volumes, keeps a set of
@@ -70,6 +70,8 @@ issue tracker for the current state of that work.
 
 ## Settings
 
+<img src="docs/icon-settings.png" width="32" height="32" align="left" alt="">
+
 Open **Index Server Settings** from Preferences. Three things to configure:
 
 - **Mode**: *Blacklist* (index everything except the listed paths - the
@@ -99,6 +101,8 @@ tags here, but not full text") - it's all-or-nothing per volume. See issue
 #7 if you need that.
 
 ## Searching
+
+<img src="docs/icon-search.png" width="32" height="32" align="left" alt="">
 
 Launch **Index Search**. Type a query, and results filter live as you type
 (or press Enter/click "Search" for an immediate search without waiting for
