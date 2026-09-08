@@ -1,5 +1,7 @@
 # index-server
 
+<img src="docs/icon.png" width="64" height="64" align="left" alt="">
+
 A live content-indexing service for Haiku, originally started by Clemens
 Zeidler (GSoC 2010) and revived here. Watches your volumes, keeps a set of
 add-ons ("analysers") up to date about every file that changes, and lets
@@ -118,6 +120,12 @@ indexed.
 
 Double-click a result to open it with its default application.
 
+<p align="center">
+  <img src="docs/screenshot-search.png" alt="Index Search window" width="45%">
+  &nbsp;&nbsp;
+  <img src="docs/screenshot-settings.png" alt="Index Server Settings preflet" width="45%">
+</p>
+
 ## Known limitations
 
 - Results show a path and a relevance score, but no preview/snippet of
@@ -169,6 +177,20 @@ with "Name not found" (see issue #63).
   stale lock after a crash shouldn't normally happen. If writes still time
   out after a forceful kill, removing those two files from the volume's
   `FullTextAnalyser` directory lets it recover.
+- **index_server doesn't come back after a real reboot**, not just after a
+  fresh install: `launch_daemon` scans both
+  `/boot/system/non-packaged/data/launch/` and `/boot/system/data/launch/`
+  as separate search paths. If a stray copy of the `index_server` job
+  definition is left behind in the non-packaged one (e.g. from an old
+  manual/dev install, before the file was shipped inside the package), the
+  job gets read twice; the second read re-adds the same implicit
+  dependency, which `launch_daemon`'s cycle detection mistakes for a
+  genuine cyclic dependency and rejects with a generic error - silently,
+  the job is just gone (`launch_roster info x-vnd.haiku-index_server`
+  reports "Name not found", and `launch_roster log` shows "Ignored job
+  ... due General system error"). Fix: `rm
+  /boot/system/non-packaged/data/launch/index_server` if it exists
+  alongside the packaged one, then reboot.
 
 ## Localization
 
