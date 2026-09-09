@@ -12,9 +12,13 @@
 #include <string.h>
 #include <strings.h>
 
+#include <AppDefs.h>
+#include <Application.h>
 #include <Autolock.h>
 #include <File.h>
+#include <Handler.h>
 #include <Locker.h>
+#include <Messenger.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
@@ -144,8 +148,43 @@ struct CaseInsensitiveLess {
 // delay to IndexServer::ReadyToRun()). BTranslatorRoster::Default() is one
 // process-wide roster (see sTranslatorLock above), so this cache is
 // process-wide too, guarded by the same lock since building it calls into
-// that same roster object.
+// that same roster object. Set back to NULL (not just cleared) by
+// TranslatorWatcher below whenever the roster changes, so the next call
+// rebuilds it the same lazy way - installing or removing a translator
+// while index_server is already running takes effect on the next file
+// analysed, not only after a restart.
 static std::set<BString, CaseInsensitiveLess>* sSupportedMimeTypes = NULL;
+
+
+// Listens for BTranslatorRoster::StartWatching()'s B_TRANSLATOR_ADDED/
+// B_TRANSLATOR_REMOVED notifications and invalidates sSupportedMimeTypes
+// so it gets rebuilt from the now-current roster. Needs a real BLooper to
+// receive messages on, which this add-on doesn't have one of on its own -
+// attached to be_app (index_server's own BApplication, valid from any
+// loaded add-on in the same team) instead, matching how any other
+// in-process notification target would be wired up here.
+class TranslatorWatcher : public BHandler {
+public:
+	TranslatorWatcher()
+		:
+		BHandler("fulltext translator watcher")
+	{
+	}
+
+	virtual void MessageReceived(BMessage* message)
+	{
+		if (message->what == B_TRANSLATOR_ADDED
+			|| message->what == B_TRANSLATOR_REMOVED) {
+			BAutolock lock(sTranslatorLock);
+			delete sSupportedMimeTypes;
+			sSupportedMimeTypes = NULL;
+		} else
+			BHandler::MessageReceived(message);
+	}
+};
+
+static TranslatorWatcher sTranslatorWatcher;
+static bool sTranslatorWatcherRegistered = false;
 
 
 // Whether some installed translator actually declares mimeType as a format
@@ -160,6 +199,21 @@ bool
 translator_supports_mime_type(const char* mimeType)
 {
 	BAutolock lock(sTranslatorLock);
+
+	// Registered here, lazily, the same first time the cache below is
+	// built - not in some separate one-time startup path, so a translator
+	// installed later still gets watched from that point on regardless of
+	// when this add-on's own first real call happens to land.
+	// BLooper::AddHandler() requires its target locked, and this runs on a
+	// VolumeWorker thread, not be_app's own.
+	if (!sTranslatorWatcherRegistered && be_app != NULL && be_app->Lock()) {
+		be_app->AddHandler(&sTranslatorWatcher);
+		be_app->Unlock();
+		BTranslatorRoster::Default()->StartWatching(
+			BMessenger(&sTranslatorWatcher));
+		sTranslatorWatcherRegistered = true;
+	}
+
 	if (sSupportedMimeTypes == NULL) {
 		sSupportedMimeTypes = new std::set<BString, CaseInsensitiveLess>;
 
