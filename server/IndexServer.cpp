@@ -134,13 +134,18 @@ IndexServer::AboutRequested()
 		"date as files change. Runs constantly in the background; use "
 		"Index Search to query it, and Index Server Settings to configure "
 		"what gets indexed.");
+	// See IndexSearchApp.cpp's identical comment for why Ankur Sethi (the
+	// 2009 original author, predating Clemens Zeidler's 2010 GSoC rewrite
+	// that Haiku's own git history actually starts from) is credited here.
 	const char* authors[] = {
+		"Ankur Sethi",
 		"Clemens Zeidler",
 		"Matthias Lindner",
 		NULL
 	};
-	const char* extraCopyrights[] = { "2026 Haiku, Inc.", NULL };
-	window->AddCopyright(2010, "Clemens Zeidler", extraCopyrights);
+	const char* extraCopyrights[] = { "2010 Clemens Zeidler",
+		"2026 Haiku, Inc.", NULL };
+	window->AddCopyright(2009, "Ankur Sethi", extraCopyrights);
 	window->AddAuthors(authors);
 	window->SetVersion(kIndexServerVersion.String());
 	window->Show();

@@ -40,13 +40,15 @@ IndexServerPreflet::AboutRequested()
 	window->AddDescription(
 		"Configures index_server: which paths get indexed (blacklist or "
 		"whitelist), and which analysers are enabled.");
+	// Unlike index_server itself, this settings window has no predecessor -
+	// it's new code written for this project's revival, not inherited from
+	// Ankur Sethi's 2009 original or Clemens Zeidler's 2010 GSoC rewrite
+	// (see IndexServer.cpp's AboutRequested() for that lineage).
 	const char* authors[] = {
-		"Clemens Zeidler",
 		"Matthias Lindner",
 		NULL
 	};
-	const char* extraCopyrights[] = { "2026 Haiku, Inc.", NULL };
-	window->AddCopyright(2010, "Clemens Zeidler", extraCopyrights);
+	window->AddCopyright(2026, "Haiku, Inc.");
 	window->AddAuthors(authors);
 	window->SetVersion(kIndexServerVersion.String());
 	window->Show();

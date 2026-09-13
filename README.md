@@ -224,13 +224,24 @@ to route contributions through there.
 
 ## Origin
 
-This started as a fork of [haiku/haiku](https://github.com/haiku/haiku)
+The very first index_server (then called "beacond") was written by
+[Ankur Sethi](https://github.com/s3thi) for the Haiku Code Drive 2009 -
+see [s3thi/index_server](https://github.com/s3thi/index_server), whose own
+description says development stopped there and what became Haiku's own
+`src/servers/index/` was "massively improved (rewritten?)" by Clemens
+Zeidler the following year for GSoC 2010. Haiku's own git history for
+these paths only starts with Zeidler's 2010 commits - a rewrite, not a
+continuation of Sethi's actual commit history - so this predecessor isn't
+visible there at all, worth naming here since nothing else does.
+
+This project started as a fork of
+[haiku/haiku](https://github.com/haiku/haiku)
 (`src/servers/index/`, `src/add-ons/index_server/`, etc.), reviving
-Clemens Zeidler's original 2010 GSoC project. It moved to its own
-repository once it became clear that landing this as an AI-assisted patch
-series through Haiku's Gerrit review wasn't a realistic path - the code
-itself stays close to Haiku's own coding guidelines and could still be
-proposed upstream later if that changes. The development history (commit
-history, authorship) from the fork is preserved here; earlier issue
-discussion remains archived at
+Zeidler's 2010 GSoC project. It moved to its own repository once it
+became clear that landing this as an AI-assisted patch series through
+Haiku's Gerrit review wasn't a realistic path - the code itself stays
+close to Haiku's own coding guidelines and could still be proposed
+upstream later if that changes. The development history (commit history,
+authorship) from the fork is preserved here; earlier issue discussion
+remains archived at
 [Paradoxianer/haiku](https://github.com/Paradoxianer/haiku/issues).

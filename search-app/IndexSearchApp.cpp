@@ -44,13 +44,15 @@ IndexSearchApp::AboutRequested()
 		"content isn't something Tracker's own queries can see, since it "
 		"lives in a separate index outside BFS - this window is what "
 		"checks it directly.");
+	// Unlike index_server itself, this search window has no predecessor -
+	// it's new code written for this project's revival, not inherited from
+	// Ankur Sethi's 2009 original or Clemens Zeidler's 2010 GSoC rewrite
+	// (see IndexServer.cpp's AboutRequested() for that lineage).
 	const char* authors[] = {
-		"Clemens Zeidler",
 		"Matthias Lindner",
 		NULL
 	};
-	const char* extraCopyrights[] = { "2026 Haiku, Inc.", NULL };
-	window->AddCopyright(2010, "Clemens Zeidler", extraCopyrights);
+	window->AddCopyright(2026, "Haiku, Inc.");
 	window->AddAuthors(authors);
 	window->SetVersion(kIndexServerVersion.String());
 	window->Show();
