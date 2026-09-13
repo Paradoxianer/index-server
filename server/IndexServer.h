@@ -87,6 +87,11 @@ private:
 			void				_StartWatchingAddOns();
 
 	inline	IndexServerAddOn*	_FindAddon(const BString& name);
+				//! Shared teardown for one addon: detach it from every
+				//! volume watcher, unload its image, delete it. Used by
+				//! both UnregisterAddOn() and RegisterAddOn() (to retire a
+				//! same-named entry before adding a new one - see #14).
+				void				_RetireAddOn(IndexServerAddOn* addon);
 
 			BVolumeRoster		fVolumeRoster;
 			BObjectList<VolumeWatcher>		fVolumeWatcherList;

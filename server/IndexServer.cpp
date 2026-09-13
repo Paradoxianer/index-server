@@ -391,6 +391,24 @@ IndexServer::RegisterAddOn(entry_ref ref)
 		unload_add_on(image);
 		return;
 	}
+
+	// An atomic "cp file.new && mv file.new file" replace (exactly what
+	// dev.sh install does) delivers an ENTRY_CREATED for the new inode and
+	// an ENTRY_REMOVED for the old one, but not guaranteed old-removed-
+	// before-new-created - AddOnMonitorHandler forwards them in whatever
+	// order the two node-monitor notifications actually arrive. If the new
+	// one wins that race, fAddOnList would briefly hold two entries with
+	// the same Name(), and UnregisterAddOn()'s _FindAddon() lookup for the
+	// old one's later removal notification could just as easily match the
+	// new one instead - unloading and deleting an add-on still very much
+	// in use, and leaving a stale, undead entry representing the one that
+	// was actually supposed to go (#14). Retiring any same-named entry
+	// here, synchronously, before the new one is added closes that window
+	// regardless of which order the two notifications arrive in.
+	IndexServerAddOn* oldAddon = _FindAddon(ref.name);
+	if (oldAddon != NULL)
+		_RetireAddOn(oldAddon);
+
 	if (!fAddOnList.AddItem(addon)) {
 		unload_add_on(image);
 		return;
@@ -415,6 +433,13 @@ IndexServer::UnregisterAddOn(entry_ref ref)
 	if (!addon)
 		return;
 
+	_RetireAddOn(addon);
+}
+
+
+void
+IndexServer::_RetireAddOn(IndexServerAddOn* addon)
+{
 	for (int i = 0; i < fVolumeWatcherList.CountItems(); i++)
 		fVolumeWatcherList.ItemAt(i)->RemoveAnalyser(addon->Name());
 
