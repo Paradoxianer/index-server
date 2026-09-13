@@ -8,10 +8,12 @@ date as files change. Includes a settings preflet and a standalone
 search window - full-text results don't show up in Tracker's own
 Query mechanism, since the index lives outside BFS.
 
-Originally started by Clemens Zeidler (GSoC 2010), revived here."
+Originally written by Ankur Sethi (Haiku Code Drive 2009), rewritten
+by Clemens Zeidler (GSoC 2010), revived here."
 packager		"Matthias Lindner <two4god@gmail.com>"
 vendor			"Haiku Index Server Rework"
 copyrights		{
+	"2009 Ankur Sethi"
 	"2010 Clemens Zeidler"
 	"2026 Haiku, Inc."
 }
