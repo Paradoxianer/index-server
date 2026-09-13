@@ -41,9 +41,13 @@ public:
 									const char *fromName, ino_t from_directory,
 									ino_t to_directory, dev_t device,
 									ino_t node, dev_t nodeDevice);
-			void				StatChanged(ino_t node, dev_t device,
-									int32 statFields);
 
+			//! B_STAT_CHANGED is handled directly in MessageReceived()
+			//! instead of overriding the StatChanged() callback - the
+			//! notification only ever carries device+node, and resolving
+			//! that to an entry_ref needs fVolumeWatcher's own node_ref
+			//! cache (see FindEntryRef()), which the callback's signature
+			//! has no way to reach cleanly.
 			void				MessageReceived(BMessage* msg);
 private:
 			VolumeWatcher*		fVolumeWatcher;

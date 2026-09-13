@@ -83,14 +83,6 @@ WatchNameHandler::EntryMoved(const char *name, const char *fromName,
 
 
 void
-WatchNameHandler::StatChanged(ino_t node, dev_t device, int32 statFields)
-{
-	if ((statFields & B_STAT_MODIFICATION_TIME) == 0)
-		return;
-}
-
-
-void
 WatchNameHandler::MessageReceived(BMessage* msg)
 {
 	if (msg->what == B_NODE_MONITOR) {
