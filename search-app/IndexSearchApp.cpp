@@ -7,14 +7,18 @@
  */
 #include <stdio.h>
 
+#include <AboutWindow.h>
 #include <Application.h>
 
+#include "IndexServerPrivate.h"
 #include "SearchWindow.h"
 
 
 class IndexSearchApp : public BApplication {
 public:
 								IndexSearchApp();
+
+	virtual	void				AboutRequested();
 
 private:
 			SearchWindow*		fWindow;
@@ -27,6 +31,29 @@ IndexSearchApp::IndexSearchApp()
 {
 	fWindow = new SearchWindow();
 	fWindow->Show();
+}
+
+
+void
+IndexSearchApp::AboutRequested()
+{
+	BAboutWindow* window = new BAboutWindow("Index Search",
+		"application/x-vnd.Haiku-IndexServerSearch");
+	window->AddDescription(
+		"Searches the full-text index kept live by index_server. Full-text "
+		"content isn't something Tracker's own queries can see, since it "
+		"lives in a separate index outside BFS - this window is what "
+		"checks it directly.");
+	const char* authors[] = {
+		"Clemens Zeidler",
+		"Matthias Lindner",
+		NULL
+	};
+	const char* extraCopyrights[] = { "2026 Haiku, Inc.", NULL };
+	window->AddCopyright(2010, "Clemens Zeidler", extraCopyrights);
+	window->AddAuthors(authors);
+	window->SetVersion(kIndexServerVersion.String());
+	window->Show();
 }
 
 

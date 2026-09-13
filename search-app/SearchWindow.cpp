@@ -20,6 +20,9 @@
 #include <Entry.h>
 #include <File.h>
 #include <LayoutBuilder.h>
+#include <Menu.h>
+#include <MenuBar.h>
+#include <MenuItem.h>
 #include <MessageRunner.h>
 #include <Messenger.h>
 #include <Mime.h>
@@ -51,6 +54,7 @@ static const uint32 kMsgSearch = 'Srch';
 static const uint32 kMsgLiveFilter = 'LFlt';
 static const uint32 kMsgLoadMore = 'LdMr';
 static const uint32 kMsgOpenResult = 'Open';
+static const uint32 kMsgAbout = 'AbtR';
 
 // Tracker's well-known signature (tracker_private.h's kTrackerSignature,
 // not pulled in here to avoid depending on a private Tracker header for
@@ -329,6 +333,15 @@ SearchWindow::SearchWindow()
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS),
 	fFilterRunner(NULL)
 {
+	BMenuBar* menuBar = new BMenuBar("menu");
+	BMenu* fileMenu = new BMenu(B_TRANSLATE("File"));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("About Index Search"),
+		new BMessage(kMsgAbout)));
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
+		new BMessage(B_QUIT_REQUESTED), 'Q'));
+	menuBar->AddItem(fileMenu);
+
 	fQueryControl = new BTextControl("query", NULL, "",
 		new BMessage(kMsgSearch));
 	fQueryControl->SetModificationMessage(new BMessage(kMsgLiveFilter));
@@ -384,17 +397,20 @@ SearchWindow::SearchWindow()
 	// and claimed its own equal share. Weight 0 pins those rows to their
 	// natural height instead, leaving the results view the only one that
 	// grows or shrinks with the window.
-	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_WINDOW_SPACING)
-		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
-			.Add(fQueryControl)
-			.Add(searchButton)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
+		.Add(menuBar)
+		.AddGroup(B_VERTICAL, B_USE_WINDOW_SPACING)
+			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
+				.Add(fQueryControl)
+				.Add(searchButton)
+				.End()
+			.Add(fResultsView)
+			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
+				.Add(fLoadMoreButton)
+				.AddGlue()
+				.End()
+			.Add(fStatusView, 0.0f)
 			.End()
-		.Add(fResultsView)
-		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
-			.Add(fLoadMoreButton)
-			.AddGlue()
-			.End()
-		.Add(fStatusView, 0.0f)
 		;
 
 	fQueryControl->MakeFocus(true);
@@ -682,6 +698,10 @@ SearchWindow::MessageReceived(BMessage* message)
 
 		case kMsgOpenResult:
 			_OpenSelected();
+			break;
+
+		case kMsgAbout:
+			be_app->PostMessage(B_ABOUT_REQUESTED);
 			break;
 
 		case kMsgQueryReply:

@@ -21,6 +21,13 @@
 // index_server.rdef's app_signature resource.
 const BString kIndexServerSignature = "application/x-vnd.Haiku-index_server";
 
+// Keep this in sync with server/.PackageInfo's "version" field by hand -
+// there's no build-time step that generates one from the other. Shown in
+// every component's About window (see AboutRequested() in IndexServer.cpp,
+// IndexSearchApp.cpp and IndexServerPreflet.cpp) so it's visible without
+// needing to check which package is installed.
+const BString kIndexServerVersion = "1.0.0-7";
+
 const BString kIndexServerDirectory = "index_server";
 const BString kVolumeStatusFileName = "VolumeStatus";
 const BString kSettingsFileName = "settings";

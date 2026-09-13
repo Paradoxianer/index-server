@@ -66,6 +66,7 @@ public:
 	virtual	void				MessageReceived(BMessage *message);
 
 	virtual	bool				QuitRequested();
+	virtual	void				AboutRequested();
 
 			void				AddVolume(const BVolume& volume);
 			void				RemoveVolume(const BVolume& volume);

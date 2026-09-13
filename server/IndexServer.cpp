@@ -12,6 +12,7 @@
 
 #include <vector>
 
+#include <AboutWindow.h>
 #include <Messenger.h>
 #include <OS.h>
 #include <Path.h>
@@ -112,6 +113,37 @@ IndexServer::~IndexServer()
 	RemoveHandler(&fVolumeObserverHandler);
 	RemoveHandler(&fAddOnMonitorHandler);
 	RemoveHandler(&fSettings);
+}
+
+
+void
+IndexServer::AboutRequested()
+{
+	// index_server has no window of its own to attach an "About" menu item
+	// to, but B_ABOUT_REQUESTED still reaches it - Deskbar's Team menu (and
+	// Tracker scripting) can send it to any running application regardless
+	// of whether it has a visible window. Worth having anyway: which build
+	// is actually running is exactly the kind of thing this project's own
+	// history of debug vs. packaged vs. dev-install confusion could have
+	// used a quick answer to.
+	BAboutWindow* window = new BAboutWindow("Index Server",
+		"application/x-vnd.Haiku-index_server");
+	window->AddDescription(
+		"Watches your volumes and keeps a full-text index and a set of BFS "
+		"attributes (EXIF, audio tags, media metadata, thumbnails) up to "
+		"date as files change. Runs constantly in the background; use "
+		"Index Search to query it, and Index Server Settings to configure "
+		"what gets indexed.");
+	const char* authors[] = {
+		"Clemens Zeidler",
+		"Matthias Lindner",
+		NULL
+	};
+	const char* extraCopyrights[] = { "2026 Haiku, Inc.", NULL };
+	window->AddCopyright(2010, "Clemens Zeidler", extraCopyrights);
+	window->AddAuthors(authors);
+	window->SetVersion(kIndexServerVersion.String());
+	window->Show();
 }
 
 

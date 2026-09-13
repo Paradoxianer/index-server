@@ -47,6 +47,7 @@ static const uint32 kMsgRevert = 'Rvrt';
 static const uint32 kMsgToggleAnalyser = 'TgAn';
 static const uint32 kMsgUpdateStatus = 'UpSt';
 static const uint32 kMsgFullReset = 'FRst';
+static const uint32 kMsgAbout = 'AbtR';
 
 static const int32 kPathColumn = 0;
 
@@ -92,6 +93,15 @@ SettingsWindow::SettingsWindow()
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
 {
 	BMenuBar* menuBar = new BMenuBar("menu bar");
+
+	BMenu* fileMenu = new BMenu(B_TRANSLATE("File"));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("About Index Server Settings"),
+		new BMessage(kMsgAbout)));
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Quit"),
+		new BMessage(B_QUIT_REQUESTED), 'Q'));
+	menuBar->AddItem(fileMenu);
+
 	_BuildAnalysersMenu(menuBar);
 
 	BPopUpMenu* modeMenu = new BPopUpMenu("mode");
@@ -401,6 +411,10 @@ void
 SettingsWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case kMsgAbout:
+			be_app->PostMessage(B_ABOUT_REQUESTED);
+			break;
+
 		case kMsgUpdateStatus:
 			_UpdateStatus();
 			break;
