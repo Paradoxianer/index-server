@@ -28,7 +28,8 @@ SYSTEM_INCLUDE_PATHS = \
 	../vendor/storage-kit \
 	/boot/system/develop/headers/private/system \
 	/boot/system/develop/headers/private/system/arch/x86_64 \
-	/boot/system/develop/headers/private/interface
+	/boot/system/develop/headers/private/interface \
+	/boot/system/develop/headers/private/app
 
 LOCAL_INCLUDE_PATHS =
 

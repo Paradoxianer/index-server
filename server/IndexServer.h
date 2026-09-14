@@ -9,8 +9,8 @@
 #define INDEX_SERVER_H
 
 
-#include <Application.h>
 #include <MessageRunner.h>
+#include <Server.h>
 #include <VolumeRoster.h>
 
 #include <AddOnMonitorHandler.h>
@@ -57,9 +57,9 @@ private:
 };
 
 
-class IndexServer : public BApplication {
+class IndexServer : public BServer {
 public:
-								IndexServer();
+								IndexServer(status_t& error);
 	virtual						~IndexServer();
 
 	virtual void				ReadyToRun();
