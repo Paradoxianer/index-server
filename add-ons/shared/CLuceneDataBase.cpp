@@ -19,9 +19,12 @@
 
 #include <Directory.h>
 #include <Entry.h>
+#include <Messenger.h>
+#include <Node.h>
 #include <UnicodeChar.h>
 #include <Volume.h>
 
+#include "IndexServerPrivate.h"
 #include "RunWithTimeout.h"
 
 
@@ -161,6 +164,72 @@ private:
 };
 
 
+const char* const kSchemaVersionAttribute = "schema_version";
+
+// If dataBasePath already holds an index built under an older (or just
+// different - a downgrade is handled the same way) schema version, wipe
+// it and ask index_server for a full reindex; otherwise just stamp the
+// current version so a future mismatch has something to compare against.
+// A brand new, still-empty directory (by far the common case - a volume
+// being indexed for the first time) has nothing to migrate, so it's
+// stamped and left alone without bothering anyone for a reindex it
+// doesn't need. Called from inside do_create_directory()'s own
+// CLuceneDirectoryCreateLock, so FullTextAnalyser's and MailAnalyser's
+// separate instances (two different loaded images, same shared
+// directory) can't both act on the same mismatch concurrently.
+void
+check_schema_version(const BPath& dataBasePath)
+{
+	BNode node(dataBasePath.Path());
+	int32 storedVersion = 0;
+	bool hasVersion = node.ReadAttr(kSchemaVersionAttribute, B_INT32_TYPE, 0,
+			&storedVersion, sizeof(storedVersion))
+		== (ssize_t)sizeof(storedVersion);
+	STRACE("check_schema_version %s: hasVersion=%d stored=%" B_PRId32
+		" current=%" B_PRId32 "\n", dataBasePath.Path(), (int)hasVersion,
+		storedVersion, kCLuceneSchemaVersion);
+	if (hasVersion && storedVersion == kCLuceneSchemaVersion)
+		return;
+
+	BDirectory directory(dataBasePath.Path());
+	if (directory.InitCheck() != B_OK)
+		return;
+
+	bool hasContent = false;
+	BEntry entry;
+	while (directory.GetNextEntry(&entry) == B_OK) {
+		char name[B_FILE_NAME_LENGTH];
+		if (entry.GetName(name) == B_OK
+				&& strcmp(name, "index_server.lock") != 0) {
+			hasContent = true;
+			break;
+		}
+	}
+
+	if (hasContent) {
+		STRACE("schema version mismatch (stored %" B_PRId32 ", current %"
+			B_PRId32 ") in %s - wiping and requesting a full reindex\n",
+			storedVersion, kCLuceneSchemaVersion, dataBasePath.Path());
+
+		directory.Rewind();
+		while (directory.GetNextEntry(&entry) == B_OK) {
+			char name[B_FILE_NAME_LENGTH];
+			if (entry.GetName(name) == B_OK
+					&& strcmp(name, "index_server.lock") == 0) {
+				continue;
+			}
+			entry.Remove();
+		}
+
+		BMessage fullReset(kMsgRequestFullReset);
+		BMessenger(kIndexServerSignature).SendMessage(&fullReset);
+	}
+
+	node.WriteAttr(kSchemaVersionAttribute, B_INT32_TYPE, 0,
+		&kCLuceneSchemaVersion, sizeof(kCLuceneSchemaVersion));
+}
+
+
 // Owns the path itself rather than pointing at the caller's stack local:
 // on timeout, ownership passes to the still-running helper thread (see
 // RunWithTimeout.h), which may still be using it.
@@ -175,6 +244,7 @@ do_create_directory(void* data)
 	create_directory_cookie* cookie = (create_directory_cookie*)data;
 	CLuceneDirectoryCreateLock lock(cookie->path);
 	create_directory(cookie->path.Path(), 0755);
+	check_schema_version(cookie->path);
 	return B_OK;
 }
 
