@@ -21,8 +21,8 @@ SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
 
-TARGETS="server translate-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
-BINARY_NAMES="index_server IndexServerTranslateHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
+TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
+BINARY_NAMES="index_server IndexServerTranslateHelper IndexServerThumbnailHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
 
 cmd="${1:-build}"
 
@@ -63,6 +63,7 @@ install() {
     install_one() { cp \"\$1\" \"\$2.new\" && mv \"\$2.new\" \"\$2\"; }; \
     install_one $(_objdir server)/index_server $SERVER_DIR/index_server && \
     install_one $(_objdir translate-helper)/IndexServerTranslateHelper $SERVER_DIR/IndexServerTranslateHelper && \
+    install_one $(_objdir thumbnail-helper)/IndexServerThumbnailHelper $SERVER_DIR/IndexServerThumbnailHelper && \
     install_one $(_objdir add-ons/fulltext)/FullTextAnalyser $ADDON_DIR/FullTextAnalyser && \
     install_one $(_objdir add-ons/audiotags)/AudioTagAnalyser $ADDON_DIR/AudioTagAnalyser && \
     install_one $(_objdir add-ons/exif)/ExifAnalyser $ADDON_DIR/ExifAnalyser && \
@@ -149,6 +150,7 @@ package() {
       $PKG_STAGE_DIR/data/deskbar/menu/Preferences/ && \
     cp $(_robjdir server)/index_server \
       $(_robjdir translate-helper)/IndexServerTranslateHelper \
+      $(_robjdir thumbnail-helper)/IndexServerThumbnailHelper \
       $PKG_STAGE_DIR/servers/ && \
     cp $(_robjdir add-ons/fulltext)/FullTextAnalyser \
       $(_robjdir add-ons/audiotags)/AudioTagAnalyser \
@@ -185,7 +187,7 @@ regression_test() {
   ssh "$HAIKU_HOST" "rm -f ~/$SERVER_LOG $SETTINGS_FILE && \
     ($SERVER_DIR/index_server > ~/$SERVER_LOG 2>&1 &) && sleep 3"
   QUERY_CLIENT="$(_objdir tests)/QueryClient" HAIKU_HOST="$HAIKU_HOST" \
-    bash "$LOCAL_TREE/tests/run_tests.sh"
+    FIXTURES_DIR="$FIXTURES_DIR" bash "$LOCAL_TREE/tests/run_tests.sh"
 }
 
 debug_report() {

@@ -8,6 +8,7 @@ SRCS = \
 	../shared/CLuceneDataBase.cpp \
 	FullTextAnalyser.cpp \
 	../shared/RunTranslatorHelper.cpp \
+	../shared/RunIsolatedHelper.cpp \
 	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 

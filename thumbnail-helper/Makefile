@@ -1,27 +1,22 @@
 ## Haiku Generic Makefile v2.6 ##
 
-NAME = ThumbnailAnalyser
-TYPE = SHARED
-APP_MIME_SIG =
+NAME = IndexServerThumbnailHelper
+TYPE = APP
+APP_MIME_SIG = application/x-vnd.Haiku-index_server_thumbnail_helper
 
 SRCS = \
-	ThumbnailAnalyser.cpp \
-	../shared/RunThumbnailHelper.cpp \
-	../shared/RunIsolatedHelper.cpp \
-	../IndexServerAddOn.cpp
+	ThumbnailHelper.cpp
 
 RDEFS =
 RSRCS =
 
-LIBS = be $(STDCPPLIBS)
+LIBS = be translation $(STDCPPLIBS)
 
 LIBPATHS =
 
-SYSTEM_INCLUDE_PATHS = \
-	../../headers
+SYSTEM_INCLUDE_PATHS =
 
-LOCAL_INCLUDE_PATHS = \
-	../shared
+LOCAL_INCLUDE_PATHS =
 
 OPTIMIZE :=
 LOCALES =

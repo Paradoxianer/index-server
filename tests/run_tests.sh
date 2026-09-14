@@ -12,6 +12,7 @@ set -uo pipefail
 
 HAIKU_HOST="${HAIKU_HOST:-haiku}"
 QUERY_CLIENT="${QUERY_CLIENT:?QUERY_CLIENT path not set}"
+FIXTURES_DIR="${FIXTURES_DIR:-~/index_test_fixtures}"
 TEST_DIR="/boot/home/Desktop/index_server_tests"
 RUN_ID="$(date +%s)"
 
@@ -128,6 +129,47 @@ elif query "$rtf_marker" | grep -q "doc_$RUN_ID.rtf"; then
   pass "RTF content translated and indexed via isolated helper"
 else
   fail "translator pipeline - '$rtf_marker' not found after indexing doc_$RUN_ID.rtf"
+fi
+
+# --- Test 7: a real image is decoded and thumbnailed via the isolated --
+# helper process (RunThumbnailHelper.h) - not just "doesn't crash", the
+# encoded WebP thumbnail must actually come back and land in
+# Media:Thumbnail the way Tracker itself reads it.
+if ssh "$HAIKU_HOST" "[ -f $FIXTURES_DIR/clean_thumb_test.jpg ]"; then
+  ssh "$HAIKU_HOST" "cp $FIXTURES_DIR/clean_thumb_test.jpg $TEST_DIR/thumb_$RUN_ID.jpg
+  mimeset $TEST_DIR/thumb_$RUN_ID.jpg"
+  sleep 10
+  if ! server_alive; then
+    fail "index_server crashed generating a thumbnail"
+  elif ssh "$HAIKU_HOST" "catattr Media:Thumbnail $TEST_DIR/thumb_$RUN_ID.jpg 2>/dev/null" | grep -q "WEBP"; then
+    pass "image thumbnail generated via isolated helper"
+  else
+    fail "thumbnail pipeline - no WebP Media:Thumbnail attribute on thumb_$RUN_ID.jpg"
+  fi
+else
+  fail "thumbnail pipeline - fixture $FIXTURES_DIR/clean_thumb_test.jpg missing"
+fi
+
+# --- Test 8: a translator crashing on real (not synthetic) malformed ----
+# content doesn't take index_server down with it - regression guard for
+# the whole point of RunThumbnailHelper.h/RunTranslatorHelper.h. This
+# fixture isn't contrived: attr_test.jpg carries an EXIF block (added for
+# the AudioTagAnalyser/ExifAnalyser attribute-preservation tests) that
+# reliably segfaults Haiku's own JPEGTranslator in parse_tiff_directory()
+# while decoding for a thumbnail - confirmed via gdb backtrace during this
+# feature's development. Before the isolation helper existed, this input
+# would have crashed index_server itself.
+if ssh "$HAIKU_HOST" "[ -f $FIXTURES_DIR/attr_test.jpg ]"; then
+  ssh "$HAIKU_HOST" "cp $FIXTURES_DIR/attr_test.jpg $TEST_DIR/crashy_$RUN_ID.jpg
+  mimeset $TEST_DIR/crashy_$RUN_ID.jpg"
+  sleep 10
+  if server_alive; then
+    pass "translator crash on malformed EXIF doesn't take index_server down"
+  else
+    fail "index_server crashed - translator isolation regression"
+  fi
+else
+  fail "translator crash guard - fixture $FIXTURES_DIR/attr_test.jpg missing"
 fi
 
 # --- cleanup -------------------------------------------------------------

@@ -8,44 +8,26 @@
 #include "ThumbnailAnalyser.h"
 
 #include <new>
+#include <stdio.h>
 #include <string.h>
 #include <strings.h>
 
-#include <Autolock.h>
-#include <Bitmap.h>
-#include <BitmapStream.h>
-#include <DataIO.h>
 #include <File.h>
-#include <Locker.h>
+#include <FindDirectory.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
-#include <TranslationUtils.h>
-#include <TranslatorFormats.h>
-#include <TranslatorRoster.h>
-#include <View.h>
 
-#include "RunWithTimeout.h"
+#include "RunThumbnailHelper.h"
 
 
 // A malformed or pathological image must not stall the whole VolumeWorker
-// thread over decoding/scaling it.
+// thread over decoding/scaling it - now bounds run_thumbnail_helper()
+// instead of an in-process run_with_timeout() call (see
+// RunThumbnailHelper.h for why decoding/composing moved into its own
+// isolated helper process).
 const bigtime_t kThumbnailTimeout = 15 * 1000000;
-
-// Each volume gets its own ThumbnailAnalyser instance running on its own
-// VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide
-// roster - see FullTextAnalyser.cpp's sTranslatorLock for why concurrent
-// calls into it from two volumes at once are not safe to allow (#59, #62).
-// This lock only protects ThumbnailAnalyser's own two call sites against
-// each other and against other ThumbnailAnalyser instances - it cannot
-// serialize against FullTextAnalyser's translator calls, since the two are
-// separate loaded add-on images with separate static storage.
-static BLocker sTranslatorLock("thumbnail translator lock");
-
-// Larger than Tracker's own icon sizes so a future viewer has some room,
-// small enough to stay cheap to generate and store per file.
-const int32 kThumbnailSize = 128;
 
 // Skip anything above this before even trying to decode it - a huge image
 // dominating the queue is exactly the kind of thing kMaxIndexableFileSize
@@ -66,123 +48,6 @@ static const char* const kThumbnailCreationTimeAttribute
 // though it translates to B_TRANSLATOR_BITMAP just like any other image
 // format here.
 static const char* const kHVIFMimeType = "application/x-vnd.Haiku-icon";
-
-
-namespace {
-
-
-struct thumbnail_cookie {
-	BString		path;
-	bool		hasThumbnail;
-	BMallocIO	thumbnailData;
-};
-
-
-status_t
-do_create_thumbnail(void* data)
-{
-	thumbnail_cookie* cookie = (thumbnail_cookie*)data;
-
-	BFile file(cookie->path.String(), B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return B_OK;
-
-	// BTranslationUtils::GetBitmap() is the exact same
-	// Translate(B_TRANSLATOR_BITMAP) + DetachBitmap() pair this used to do by
-	// hand - it adds no timeout or hang protection of its own, so the
-	// run_with_timeout() wrapper around this whole function stays required.
-	BBitmap* sourceBitmap;
-	{
-		BAutolock lock(sTranslatorLock);
-		sourceBitmap = BTranslationUtils::GetBitmap(&file);
-	}
-	if (sourceBitmap == NULL)
-		return B_OK;
-
-	BRect sourceBounds = sourceBitmap->Bounds();
-	float sourceWidth = sourceBounds.Width() + 1;
-	float sourceHeight = sourceBounds.Height() + 1;
-	if (sourceWidth <= 0 || sourceHeight <= 0) {
-		delete sourceBitmap;
-		return B_OK;
-	}
-
-	// Tracker's own GetThumbnailFromAttr() (Thumbnails.cpp) imports a stored
-	// thumbnail directly via BBitmap::ImportBits() with no rescale whenever
-	// the requested icon size is exactly B_XXL_ICON (128, same as
-	// kThumbnailSize) - it only assumes a fixed kThumbnailSize x
-	// kThumbnailSize square. A canvas sized to the source's own aspect
-	// ratio (e.g. 128x64 for a wide image) silently fails that import.
-	// Always emit a fixed square canvas, letterboxing the scaled content
-	// centered within it exactly like Tracker's own ScaleBitmap()/
-	// ThumbBounds() do, so the two stay bit-compatible.
-	float longSide = sourceWidth > sourceHeight ? sourceWidth : sourceHeight;
-	float scale = kThumbnailSize / longSide;
-	if (scale > 1)
-		scale = 1; // never upscale a smaller image
-	float destWidth = sourceWidth * scale;
-	float destHeight = sourceHeight * scale;
-	if (destWidth < 1)
-		destWidth = 1;
-	if (destHeight < 1)
-		destHeight = 1;
-
-	BRect canvasBounds(0, 0, kThumbnailSize - 1, kThumbnailSize - 1);
-	BRect destBounds(0, 0, destWidth - 1, destHeight - 1);
-	destBounds.OffsetBySelf((kThumbnailSize - destWidth) / 2.0f,
-		(kThumbnailSize - destHeight) / 2.0f);
-
-	BBitmap* destBitmap = new(std::nothrow) BBitmap(canvasBounds, B_RGBA32,
-		true);
-	if (destBitmap == NULL || destBitmap->InitCheck() != B_OK) {
-		delete sourceBitmap;
-		delete destBitmap;
-		return B_OK;
-	}
-
-	BView* view = new(std::nothrow) BView(canvasBounds, "thumb",
-		B_FOLLOW_NONE, B_WILL_DRAW);
-	if (view == NULL) {
-		delete sourceBitmap;
-		delete destBitmap;
-		return B_OK;
-	}
-	destBitmap->AddChild(view);
-	destBitmap->Lock();
-	view->SetLowColor(B_TRANSPARENT_COLOR);
-	view->FillRect(canvasBounds, B_SOLID_LOW);
-	view->SetDrawingMode(B_OP_ALPHA);
-	view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_COMPOSITE);
-	view->DrawBitmap(sourceBitmap, sourceBounds, destBounds,
-		B_FILTER_BITMAP_BILINEAR);
-	view->Sync();
-	destBitmap->Unlock();
-	delete sourceBitmap;
-
-	// BBitmapStream(bitmap) takes ownership of destBitmap and deletes it in
-	// its own destructor - nothing else here must delete it afterwards.
-	BBitmapStream destStream(destBitmap);
-	status_t status;
-	{
-		BAutolock lock(sTranslatorLock);
-		status = BTranslatorRoster::Default()->Translate(&destStream,
-			NULL, NULL, &cookie->thumbnailData, B_WEBP_FORMAT);
-	}
-
-	cookie->hasThumbnail = status == B_OK
-		&& cookie->thumbnailData.BufferLength() > 0;
-	return B_OK;
-}
-
-
-void
-cleanup_thumbnail(void* data)
-{
-	delete (thumbnail_cookie*)data;
-}
-
-
-}	// namespace
 
 
 ThumbnailAnalyser::ThumbnailAnalyser(BString name, const BVolume& volume)
@@ -234,28 +99,57 @@ ThumbnailAnalyser::AnalyseEntry(const entry_ref& ref)
 		return;
 	}
 
-	BPath path(&ref);
-	thumbnail_cookie* cookie = new(std::nothrow) thumbnail_cookie;
-	if (cookie == NULL)
+	node_ref nodeRef;
+	if (file.GetNodeRef(&nodeRef) != B_OK)
 		return;
-	cookie->path = path.Path();
-	cookie->hasThumbnail = false;
 
-	status_t status = run_with_timeout(do_create_thumbnail, cookie,
-		cleanup_thumbnail, kThumbnailTimeout);
-	if (status == B_TIMED_OUT) {
-		// cookie now belongs to the still-running helper thread; must not
-		// touch it here.
+	BPath path(&ref);
+
+	// Scratch space for the isolated helper's output - not this add-on's
+	// own persistent data (it has none; the result ends up as an
+	// attribute on the source file itself), so the system temp directory
+	// is the right place, not fDataBasePath-style storage the way
+	// FullTextAnalyser uses for its own temp files. Keyed by node_ref for
+	// the same reason FullTextAnalyser's temp names are: more than one
+	// file can be in flight across volumes' worker threads at once, so no
+	// two may share a path.
+	BPath tempPath;
+	if (find_directory(B_SYSTEM_TEMP_DIRECTORY, &tempPath) != B_OK)
+		return;
+	BString tempName;
+	tempName.SetToFormat("index_server_thumbnail_%" B_PRId64,
+		(int64)nodeRef.node);
+	tempPath.Append(tempName.String());
+
+	// ThumbnailHelper.cpp only ever creates tempPath itself, by rename()
+	// on success - a timeout or any other failure leaves nothing there,
+	// so there's nothing to clean up in either failure case here.
+	status_t status = run_thumbnail_helper(path.Path(), tempPath.Path(),
+		kThumbnailTimeout);
+	if (status != B_OK)
+		return;
+
+	BFile thumbnailFile(tempPath.Path(), B_READ_ONLY);
+	off_t thumbnailSize;
+	if (thumbnailFile.InitCheck() != B_OK
+		|| thumbnailFile.GetSize(&thumbnailSize) != B_OK
+		|| thumbnailSize <= 0) {
+		remove(tempPath.Path());
 		return;
 	}
-	if (status != B_OK || !cookie->hasThumbnail) {
-		delete cookie;
+
+	uint8* buffer = new(std::nothrow) uint8[thumbnailSize];
+	if (buffer == NULL
+		|| thumbnailFile.Read(buffer, thumbnailSize) != thumbnailSize) {
+		delete[] buffer;
+		remove(tempPath.Path());
 		return;
 	}
+	remove(tempPath.Path());
 
 	ssize_t written = file.WriteAttr(kThumbnailAttribute, B_RAW_TYPE, 0,
-		cookie->thumbnailData.Buffer(), cookie->thumbnailData.BufferLength());
-	if (written == (ssize_t)cookie->thumbnailData.BufferLength()) {
+		buffer, thumbnailSize);
+	if (written == (ssize_t)thumbnailSize) {
 		// Must be after the file's own modification time, or Tracker
 		// considers this thumbnail stale and tries to regenerate it itself
 		// (GetThumbnailFromAttr() in Thumbnails.cpp).
@@ -263,7 +157,7 @@ ThumbnailAnalyser::AnalyseEntry(const entry_ref& ref)
 		file.WriteAttr(kThumbnailCreationTimeAttribute, B_TIME_TYPE, 0,
 			&created, sizeof(created));
 	}
-	delete cookie;
+	delete[] buffer;
 }
 
 
