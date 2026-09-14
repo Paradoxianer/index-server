@@ -21,8 +21,8 @@ SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
 
-TARGETS="server add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app"
-BINARY_NAMES="index_server FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch"
+TARGETS="server add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
+BINARY_NAMES="index_server FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
 
 cmd="${1:-build}"
 
@@ -171,6 +171,20 @@ package_uninstall() {
   ssh "$HAIKU_HOST" "pkgman uninstall -y index_server"
 }
 
+# Builds, starts a clean index_server, and runs tests/run_tests.sh against
+# it via QueryClient (see tests/QueryClient.cpp for why a dedicated CLI
+# client is used instead of hey/GUI scripting). Leaves the server running
+# afterwards so a failure can be investigated with `./dev.sh status`.
+regression_test() {
+  build
+  stop
+  install
+  ssh "$HAIKU_HOST" "rm -f ~/$SERVER_LOG $SETTINGS_FILE && \
+    ($SERVER_DIR/index_server > ~/$SERVER_LOG 2>&1 &) && sleep 3"
+  QUERY_CLIENT="$(_objdir tests)/QueryClient" HAIKU_HOST="$HAIKU_HOST" \
+    bash "$LOCAL_TREE/tests/run_tests.sh"
+}
+
 debug_report() {
   remote_path=$(ssh "$HAIKU_HOST" "ls -t ~/Desktop/*.report 2>/dev/null | head -1")
   if [ -z "$remote_path" ]; then
@@ -195,5 +209,6 @@ case "$cmd" in
   package) package ;;
   package-install) package_install ;;
   package-uninstall) package_uninstall ;;
-  *) echo "usage: $0 {bootstrap|sync|build|install|run|build-and-run|start-logged|debug-log|stop|status|debug-report|package|package-install|package-uninstall}"; exit 1 ;;
+  test) regression_test ;;
+  *) echo "usage: $0 {bootstrap|sync|build|install|run|build-and-run|start-logged|debug-log|stop|status|debug-report|package|package-install|package-uninstall|test}"; exit 1 ;;
 esac
