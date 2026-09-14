@@ -1,28 +1,22 @@
 ## Haiku Generic Makefile v2.6 ##
 
-NAME = FullTextAnalyser
-TYPE = SHARED
+NAME = IndexServerTranslateHelper
+TYPE = APP
 APP_MIME_SIG =
 
 SRCS = \
-	../shared/CLuceneDataBase.cpp \
-	FullTextAnalyser.cpp \
-	../shared/RunTranslatorHelper.cpp \
-	../shared/RunWithTimeout.cpp \
-	../IndexServerAddOn.cpp
+	TranslateHelper.cpp
 
 RDEFS =
 RSRCS =
 
-LIBS = be translation clucene-core clucene-shared $(STDCPPLIBS)
+LIBS = be translation $(STDCPPLIBS)
 
 LIBPATHS =
 
-SYSTEM_INCLUDE_PATHS = \
-	../../headers
+SYSTEM_INCLUDE_PATHS =
 
-LOCAL_INCLUDE_PATHS = \
-	../shared
+LOCAL_INCLUDE_PATHS =
 
 OPTIMIZE :=
 LOCALES =

@@ -21,8 +21,8 @@ SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
 
-TARGETS="server add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
-BINARY_NAMES="index_server FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
+TARGETS="server translate-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
+BINARY_NAMES="index_server IndexServerTranslateHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
 
 cmd="${1:-build}"
 
@@ -62,6 +62,7 @@ install() {
   ssh "$HAIKU_HOST" "mkdir -p $SERVER_DIR $ADDON_DIR $PREFLET_DIR $APPS_DIR && \
     install_one() { cp \"\$1\" \"\$2.new\" && mv \"\$2.new\" \"\$2\"; }; \
     install_one $(_objdir server)/index_server $SERVER_DIR/index_server && \
+    install_one $(_objdir translate-helper)/IndexServerTranslateHelper $SERVER_DIR/IndexServerTranslateHelper && \
     install_one $(_objdir add-ons/fulltext)/FullTextAnalyser $ADDON_DIR/FullTextAnalyser && \
     install_one $(_objdir add-ons/audiotags)/AudioTagAnalyser $ADDON_DIR/AudioTagAnalyser && \
     install_one $(_objdir add-ons/exif)/ExifAnalyser $ADDON_DIR/ExifAnalyser && \
@@ -146,7 +147,9 @@ package() {
       $PKG_STAGE_DIR/data/deskbar/menu/Applications/ && \
     cp -P $REMOTE_TREE/server/data/deskbar/menu/Preferences/IndexServerSettings \
       $PKG_STAGE_DIR/data/deskbar/menu/Preferences/ && \
-    cp $(_robjdir server)/index_server $PKG_STAGE_DIR/servers/ && \
+    cp $(_robjdir server)/index_server \
+      $(_robjdir translate-helper)/IndexServerTranslateHelper \
+      $PKG_STAGE_DIR/servers/ && \
     cp $(_robjdir add-ons/fulltext)/FullTextAnalyser \
       $(_robjdir add-ons/audiotags)/AudioTagAnalyser \
       $(_robjdir add-ons/exif)/ExifAnalyser \

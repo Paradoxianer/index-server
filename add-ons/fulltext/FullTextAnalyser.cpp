@@ -28,7 +28,7 @@
 
 #include "CLuceneDataBase.h"
 #include "IndexServerPrivate.h"
-#include "RunWithTimeout.h"
+#include "RunTranslatorHelper.h"
 
 
 #define DEBUG_FULLTEXT_ANALYSER
@@ -54,82 +54,22 @@ const bigtime_t kTranslateTimeout = 30 * 1000000;
 // notification-refresh gap as one genuinely slow file.
 const bigtime_t kSlowEntryThreshold = 200 * 1000;
 
-// Each volume gets its own FullTextAnalyser instance running on its own
-// VolumeWorker thread, but BTranslatorRoster::Default() is one process-wide
-// roster - concurrent Identify()/Translate() calls from two volumes at once
-// have been observed corrupting a translator's own internal state badly
-// enough to crash later in unrelated code (see #59, #62). Serialize every
-// call into it.
+// FullTextAnalyser calls into BTranslatorRoster::Default() itself only to
+// enumerate installed translators for translator_supports_mime_type()'s
+// cache further below - concurrent access to that one process-wide roster
+// from two volumes' worker threads at once has been observed corrupting
+// its internal state badly enough to crash later in unrelated code (see
+// #59, #62). Serialize that.
+//
+// The per-file Identify()/Translate() calls don't go through this roster
+// at all anymore - see RunTranslatorHelper.h for why (a translator
+// crashing on untrusted file content used to take index_server down with
+// it; now it runs isolated in its own throwaway team, so there's nothing
+// left here to serialize for those two calls specifically).
 static BLocker sTranslatorLock("translator lock");
 
 
 namespace {
-
-
-// Owns the file itself rather than pointing at the caller's stack local: on
-// timeout, ownership passes to the still-running helper thread (see
-// RunWithTimeout.h), which may still be reading it.
-struct identify_cookie {
-	BFile*				source;
-	translator_info		info;
-};
-
-
-status_t
-do_identify(void* data)
-{
-	identify_cookie* cookie = (identify_cookie*)data;
-	BAutolock lock(sTranslatorLock);
-	return BTranslatorRoster::Default()->Identify(cookie->source, NULL,
-		&cookie->info, 0, NULL, B_TRANSLATOR_TEXT);
-}
-
-
-void
-cleanup_identify(void* data)
-{
-	identify_cookie* cookie = (identify_cookie*)data;
-	delete cookie->source;
-	delete cookie;
-}
-
-
-// Owns the files itself rather than pointing at the caller's stack locals:
-// on timeout, ownership passes to the still-running helper thread (see
-// RunWithTimeout.h), which may still be reading/writing them.
-struct translate_cookie {
-	BFile*	source;
-	BFile*	destination;
-};
-
-
-status_t
-do_translate(void* data)
-{
-	translate_cookie* cookie = (translate_cookie*)data;
-	bigtime_t lockWaitStart = system_time();
-	BAutolock lock(sTranslatorLock);
-	bigtime_t translateStart = system_time();
-	status_t status = BTranslatorRoster::Default()->Translate(cookie->source,
-		NULL, NULL, cookie->destination, 'TEXT');
-	bigtime_t elapsed = system_time() - translateStart;
-	if (elapsed > kSlowEntryThreshold) {
-		STRACE("slow Translate() (%" B_PRId64 " ms, waited %" B_PRId64
-			" ms for sTranslatorLock)\n", elapsed / 1000,
-			(translateStart - lockWaitStart) / 1000);
-	}
-	return status;
-}
-
-
-void
-cleanup_translate(void* data)
-{
-	translate_cookie* cookie = (translate_cookie*)data;
-	delete cookie->source;
-	delete cookie->destination;
-	delete cookie;
-}
 
 
 // MIME types compare case-insensitively per BMimeType's own documented
@@ -263,7 +203,7 @@ FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)
 	// healthy volume, but there is nothing bounding how long that can
 	// take against a slow or misbehaving filesystem driver (a flaky
 	// removable FAT/FAT32 volume, for instance), and unlike translator
-	// calls (see RunWithTimeout.h) this had no timeout at all - a single
+	// calls (see RunTranslatorHelper.h) this had no timeout at all - a single
 	// bad volume could hang index_server's startup entirely, which,
 	// depending on what else in the boot sequence waits on it, can look
 	// like the whole system failing to boot.
@@ -324,8 +264,8 @@ FullTextAnalyser::AnalyseEntry(const entry_ref& ref)
 
 
 // A slow individual entry - waiting on kTranslateTimeout, kIdentifyTimeout,
-// sTranslatorLock, or the shared CLucene write lock, all of which can each
-// individually take several seconds under load - delays every Progress()
+// or the shared CLucene write lock, all of which can each individually take
+// several seconds under load - delays every Progress()
 // call after it by however long it took, since AnalyseEntry() is called
 // synchronously once per entry from CatchUpAnalyser::_CatchUp()'s loop. If
 // that gap outlasts the progress notification's own refresh window, the
@@ -461,32 +401,15 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		}
 	}
 
-	identify_cookie* cookie = new(std::nothrow) identify_cookie;
-	if (cookie == NULL)
-		return false;
-	cookie->source = new(std::nothrow) BFile(&ref, B_READ_ONLY);
-	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
-		cleanup_identify(cookie);
-		return false;
-	}
-
-	status_t status = run_with_timeout(do_identify, cookie, cleanup_identify,
+	status_t status = run_translator_helper(path.Path(), NULL,
 		kIdentifyTimeout);
-	if (status == B_TIMED_OUT) {
-		// cookie now belongs to the still-running helper thread; don't
-		// touch it here.
-		return false;
-	}
-	// The actual Translate() call in _QueueTranslated() re-identifies the
-	// file itself rather than reusing this result, so this is otherwise
-	// unused - logged only so a future #47-style translator crash (see
-	// #68) names its culprit directly in the log, instead of needing a
-	// manual bisection of ~20 loaded translator add-ons after the fact.
-	if (status == B_OK) {
-		STRACE("identified %s as \"%s\" (translator %" B_PRId32 ")\n",
-			ref.name, cookie->info.name, (int32)cookie->info.translator);
-	}
-	cleanup_identify(cookie);
+	STRACE("_InterestingEntry %s: run_translator_helper identify status=%"
+		B_PRId32 "\n", ref.name, (int32)status);
+	// Which translator claimed the file isn't visible here anymore now
+	// that Identify() runs isolated in its own team (see
+	// RunTranslatorHelper.h) - a repeatedly failing MIME type is still
+	// diagnosable by testing installed translators individually, just not
+	// from this log line the way it used to be.
 	return status == B_OK;
 }
 
@@ -510,51 +433,30 @@ FullTextAnalyser::_QueueTranslated(const entry_ref& ref)
 {
 	BPath path(&ref);
 
-	translate_cookie* cookie = new(std::nothrow) translate_cookie;
-	if (cookie == NULL)
-		return false;
-	cookie->source = new(std::nothrow) BFile(path.Path(), B_READ_ONLY);
-	if (cookie->source == NULL || cookie->source->InitCheck() != B_OK) {
-		STRACE("Can't open inFile for %s\n", path.Path());
-		cleanup_translate(cookie);
-		return false;
-	}
-
 	// Unique per document - more than one translated document can be
 	// pending at once between here and the Commit() that actually indexes
 	// it, so no two temp files may share a path. The node ref is already
 	// unique and available without adding a counter to track.
 	node_ref nodeRef;
-	if (cookie->source->GetNodeRef(&nodeRef) != B_OK) {
-		cleanup_translate(cookie);
-		return false;
+	{
+		BNode node(&ref);
+		if (node.InitCheck() != B_OK || node.GetNodeRef(&nodeRef) != B_OK)
+			return false;
 	}
 	BPath tempPath(fDataBasePath);
 	BString tempName;
 	tempName.SetToFormat("temp_file_%" B_PRId64, (int64)nodeRef.node);
 	tempPath.Append(tempName.String());
 
-	cookie->destination = new(std::nothrow) BFile(tempPath.Path(),
-		B_READ_WRITE | B_CREATE_FILE | B_ERASE_FILE);
-	if (cookie->destination == NULL
-		|| cookie->destination->InitCheck() != B_OK) {
-		STRACE("Can't open outFile for %s\n", path.Path());
-		cleanup_translate(cookie);
+	// TranslateHelper.cpp only ever creates tempPath itself, by rename()
+	// on success - a timeout or any other failure leaves nothing there, so
+	// there's nothing to clean up in either failure case here.
+	status_t status = run_translator_helper(path.Path(), tempPath.Path(),
+		kTranslateTimeout);
+	STRACE("_QueueTranslated %s: run_translator_helper translate status=%"
+		B_PRId32 "\n", ref.name, (int32)status);
+	if (status != B_OK)
 		return false;
-	}
-
-	status_t translateStatus = run_with_timeout(do_translate, cookie,
-		cleanup_translate, kTranslateTimeout);
-	if (translateStatus == B_TIMED_OUT) {
-		// cookie now belongs to the still-running helper thread; must not
-		// touch it (or tempPath, which it may still be writing to) here.
-		return false;
-	}
-	cleanup_translate(cookie);
-	if (translateStatus != B_OK) {
-		remove(tempPath.Path());
-		return false;
-	}
 
 	_WriteDataBase()->AddDocumentFromContentFile(ref, tempPath);
 	fPendingTempFiles.push_back(tempPath.Path());

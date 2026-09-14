@@ -108,6 +108,28 @@ else
   fail "untyped text file - '$untyped_marker' not found"
 fi
 
+# --- Test 6: non-text content is translated via the isolated helper ----
+# process (RunTranslatorHelper.h) rather than in-process - this exercises
+# the real Identify()+Translate() round trip through a genuine installed
+# translator (RTFTranslator), not just "doesn't crash" - the translated
+# text must actually come back and get indexed correctly.
+rtf_marker="rtftest_${RUN_ID}"
+ssh "$HAIKU_HOST" "cat > $TEST_DIR/doc_$RUN_ID.rtf << EOF
+{\\\\rtf1\\\\ansi\\\\deff0
+{\\\\fonttbl{\\\\f0 Times New Roman;}}
+\\\\f0\\\\fs24 $rtf_marker content here.
+}
+EOF
+mimeset $TEST_DIR/doc_$RUN_ID.rtf"
+sleep 8
+if ! server_alive; then
+  fail "index_server crashed translating an RTF file"
+elif query "$rtf_marker" | grep -q "doc_$RUN_ID.rtf"; then
+  pass "RTF content translated and indexed via isolated helper"
+else
+  fail "translator pipeline - '$rtf_marker' not found after indexing doc_$RUN_ID.rtf"
+fi
+
 # --- cleanup -------------------------------------------------------------
 ssh "$HAIKU_HOST" "rm -rf $TEST_DIR"
 
