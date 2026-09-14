@@ -120,12 +120,15 @@ void
 IndexServer::AboutRequested()
 {
 	// index_server has no window of its own to attach an "About" menu item
-	// to, but B_ABOUT_REQUESTED still reaches it - Deskbar's Team menu (and
-	// Tracker scripting) can send it to any running application regardless
-	// of whether it has a visible window. Worth having anyway: which build
-	// is actually running is exactly the kind of thing this project's own
-	// history of debug vs. packaged vs. dev-install confusion could have
-	// used a quick answer to.
+	// to, and - contrary to what this comment used to claim - Deskbar's
+	// Team menu doesn't reach it either: TBarApp::AddTeam() skips any team
+	// whose app_info carries B_BACKGROUND_APP, and index_server.rdef
+	// declares exactly that (verified at runtime: flags=0x6). So this is
+	// only reachable by sending B_ABOUT_REQUESTED directly, via scripting
+	// or a BMessenger from another app. Kept anyway because it costs
+	// nothing and answers "which build is actually running" - the same
+	// question Index Search's and the settings preflet's own About windows
+	// answer for users who have something to click on.
 	BAboutWindow* window = new BAboutWindow("Index Server",
 		"application/x-vnd.Haiku-index_server");
 	window->AddDescription(
