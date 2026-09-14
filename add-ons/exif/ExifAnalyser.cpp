@@ -20,6 +20,7 @@
 
 #include <libexif/exif-data.h>
 
+#include "AttributeHelper.h"
 #include "RunWithTimeout.h"
 
 
@@ -157,27 +158,18 @@ ExifAnalyser::AnalyseEntry(const entry_ref& ref)
 
 	BFile file(&ref, B_READ_ONLY);
 	if (file.InitCheck() == B_OK) {
-		if (cookie->make.Length() > 0) {
-			file.WriteAttr("EXIF:Make", B_STRING_TYPE, 0,
-				cookie->make.String(), cookie->make.Length());
-		}
-		if (cookie->model.Length() > 0) {
-			file.WriteAttr("EXIF:Model", B_STRING_TYPE, 0,
-				cookie->model.String(), cookie->model.Length());
-		}
+		if (cookie->make.Length() > 0)
+			write_string_attr_if_empty(file, "EXIF:Make", cookie->make);
+		if (cookie->model.Length() > 0)
+			write_string_attr_if_empty(file, "EXIF:Model", cookie->model);
 		if (cookie->dateTimeOriginal.Length() > 0) {
-			file.WriteAttr("EXIF:DateTimeOriginal", B_STRING_TYPE, 0,
-				cookie->dateTimeOriginal.String(),
-				cookie->dateTimeOriginal.Length());
+			write_string_attr_if_empty(file, "EXIF:DateTimeOriginal",
+				cookie->dateTimeOriginal);
 		}
-		if (cookie->width.Length() > 0) {
-			file.WriteAttr("EXIF:Width", B_STRING_TYPE, 0,
-				cookie->width.String(), cookie->width.Length());
-		}
-		if (cookie->height.Length() > 0) {
-			file.WriteAttr("EXIF:Height", B_STRING_TYPE, 0,
-				cookie->height.String(), cookie->height.Length());
-		}
+		if (cookie->width.Length() > 0)
+			write_string_attr_if_empty(file, "EXIF:Width", cookie->width);
+		if (cookie->height.Length() > 0)
+			write_string_attr_if_empty(file, "EXIF:Height", cookie->height);
 	}
 	delete cookie;
 }

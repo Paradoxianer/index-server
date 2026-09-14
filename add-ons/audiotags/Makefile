@@ -6,6 +6,7 @@ APP_MIME_SIG =
 
 SRCS = \
 	AudioTagAnalyser.cpp \
+	../shared/AttributeHelper.cpp \
 	../shared/RunWithTimeout.cpp \
 	../IndexServerAddOn.cpp
 
