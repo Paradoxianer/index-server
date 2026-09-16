@@ -10,6 +10,7 @@ SRCS = \
 	../shared/RunTranslatorHelper.cpp \
 	../shared/RunIsolatedHelper.cpp \
 	../shared/RunWithTimeout.cpp \
+	../shared/TranslatorMimeCache.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =

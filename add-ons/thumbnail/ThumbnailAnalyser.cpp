@@ -9,8 +9,6 @@
 
 #include <new>
 #include <stdio.h>
-#include <string.h>
-#include <strings.h>
 
 #include <File.h>
 #include <FindDirectory.h>
@@ -20,6 +18,7 @@
 #include <Path.h>
 
 #include "RunThumbnailHelper.h"
+#include "TranslatorMimeCache.h"
 
 
 // A malformed or pathological image must not stall the whole VolumeWorker
@@ -31,7 +30,11 @@ const bigtime_t kThumbnailTimeout = 15 * 1000000;
 
 // Skip anything above this before even trying to decode it - a huge image
 // dominating the queue is exactly the kind of thing kMaxIndexableFileSize
-// already guards against for text (see FullTextAnalyser.h).
+// already guards against for text (see FullTextAnalyser.h). Only a proxy
+// for decode cost now that this also covers non-image/* formats a
+// translator produces a bitmap from (see #32) - a multi-page PDF's decode
+// cost is driven by page complexity, not file size, so kThumbnailTimeout
+// above is what actually bounds a single pathological page, not this.
 const off_t kMaxThumbnailSourceSize = 32 * 1024 * 1024;
 
 // Tracker already reads a thumbnail straight from these attributes for
@@ -42,12 +45,6 @@ const off_t kMaxThumbnailSourceSize = 32 * 1024 * 1024;
 static const char* const kThumbnailAttribute = "Media:Thumbnail";
 static const char* const kThumbnailCreationTimeAttribute
 	= "Media:Thumbnail:CreationTime";
-
-// Haiku's own vector icon format isn't typed "image/*" (HVIFTranslator
-// registers it as this application/* type - see HVIFTranslator.cpp), even
-// though it translates to B_TRANSLATOR_BITMAP just like any other image
-// format here.
-static const char* const kHVIFMimeType = "application/x-vnd.Haiku-icon";
 
 
 ThumbnailAnalyser::ThumbnailAnalyser(BString name, const BVolume& volume)
@@ -76,13 +73,17 @@ ThumbnailAnalyser::_IsSupportedImage(const entry_ref& ref)
 	if (nodeInfo.GetType(mimeType) != B_OK)
 		return false;
 
-	// MIME types compare case-insensitively per BMimeType's own documented
-	// equality rule - HVIFTranslator's registered type and what
-	// update_mime_info() actually sniffs onto a file differ in case
-	// ("x-vnd.Haiku-icon" vs. "x-vnd.haiku-icon"), so a plain strcmp here
-	// silently rejected every real HVIF file on disk.
-	return strncasecmp(mimeType, "image/", 6) == 0
-		|| strcasecmp(mimeType, kHVIFMimeType) == 0;
+	// Ask BTranslatorRoster directly (via the shared cache in
+	// TranslatorMimeCache.h) instead of hardcoding "image/*" - this used
+	// to special-case Haiku's own HVIF vector icon format too (registered
+	// as an application/* type, not image/*), but the dynamic check
+	// already covers that correctly (translator_supports_mime_type()'s
+	// underlying cache compares case-insensitively, and HVIFTranslator's
+	// declared input format matches regardless of case), and now also
+	// covers anything else the user installs a bitmap-producing
+	// translator for - a PDF page-rendering translator, for instance
+	// (see #32) - without this add-on needing to know about it.
+	return translator_supports_mime_type(mimeType);
 }
 
 

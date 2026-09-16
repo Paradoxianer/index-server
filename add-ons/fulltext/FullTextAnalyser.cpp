@@ -7,28 +7,19 @@
  */
 #include "FullTextAnalyser.h"
 
-#include <new>
-#include <set>
 #include <string.h>
 #include <strings.h>
 
-#include <AppDefs.h>
-#include <Application.h>
-#include <Autolock.h>
 #include <File.h>
-#include <Handler.h>
-#include <Locker.h>
-#include <Messenger.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
-#include <TranslatorFormats.h>
-#include <TranslatorRoster.h>
 
 #include "CLuceneDataBase.h"
 #include "IndexServerPrivate.h"
 #include "RunTranslatorHelper.h"
+#include "TranslatorMimeCache.h"
 
 
 #define DEBUG_FULLTEXT_ANALYSER
@@ -53,135 +44,6 @@ const bigtime_t kTranslateTimeout = 30 * 1000000;
 // (never crossing a 1s bar on their own) still adds up to the same
 // notification-refresh gap as one genuinely slow file.
 const bigtime_t kSlowEntryThreshold = 200 * 1000;
-
-// FullTextAnalyser calls into BTranslatorRoster::Default() itself only to
-// enumerate installed translators for translator_supports_mime_type()'s
-// cache further below - concurrent access to that one process-wide roster
-// from two volumes' worker threads at once has been observed corrupting
-// its internal state badly enough to crash later in unrelated code (see
-// #59, #62). Serialize that.
-//
-// The per-file Identify()/Translate() calls don't go through this roster
-// at all anymore - see RunTranslatorHelper.h for why (a translator
-// crashing on untrusted file content used to take index_server down with
-// it; now it runs isolated in its own throwaway team, so there's nothing
-// left here to serialize for those two calls specifically).
-static BLocker sTranslatorLock("translator lock");
-
-
-namespace {
-
-
-// MIME types compare case-insensitively per BMimeType's own documented
-// equality rule (see #49).
-struct CaseInsensitiveLess {
-	bool operator()(const BString& a, const BString& b) const
-	{
-		return a.ICompare(b) < 0;
-	}
-};
-
-
-// The MIME types any installed translator actually declares as input,
-// built once, lazily, the first time it's needed rather than eagerly at
-// startup (same reasoning as _WriteDataBase() - this must not add its own
-// delay to IndexServer::ReadyToRun()). BTranslatorRoster::Default() is one
-// process-wide roster (see sTranslatorLock above), so this cache is
-// process-wide too, guarded by the same lock since building it calls into
-// that same roster object. Set back to NULL (not just cleared) by
-// TranslatorWatcher below whenever the roster changes, so the next call
-// rebuilds it the same lazy way - installing or removing a translator
-// while index_server is already running takes effect on the next file
-// analysed, not only after a restart.
-static std::set<BString, CaseInsensitiveLess>* sSupportedMimeTypes = NULL;
-
-
-// Listens for BTranslatorRoster::StartWatching()'s B_TRANSLATOR_ADDED/
-// B_TRANSLATOR_REMOVED notifications and invalidates sSupportedMimeTypes
-// so it gets rebuilt from the now-current roster. Needs a real BLooper to
-// receive messages on, which this add-on doesn't have one of on its own -
-// attached to be_app (index_server's own BApplication, valid from any
-// loaded add-on in the same team) instead, matching how any other
-// in-process notification target would be wired up here.
-class TranslatorWatcher : public BHandler {
-public:
-	TranslatorWatcher()
-		:
-		BHandler("fulltext translator watcher")
-	{
-	}
-
-	virtual void MessageReceived(BMessage* message)
-	{
-		if (message->what == B_TRANSLATOR_ADDED
-			|| message->what == B_TRANSLATOR_REMOVED) {
-			BAutolock lock(sTranslatorLock);
-			delete sSupportedMimeTypes;
-			sSupportedMimeTypes = NULL;
-		} else
-			BHandler::MessageReceived(message);
-	}
-};
-
-static TranslatorWatcher sTranslatorWatcher;
-static bool sTranslatorWatcherRegistered = false;
-
-
-// Whether some installed translator actually declares mimeType as a format
-// it can read. BTranslatorRoster::Identify() itself asks every registered
-// translator regardless of hint - the hintMIME parameter is purely
-// advisory, and #27 found that STXTTranslator doesn't even honor its own
-// declared input formats ("text/plain", "text/x-vnd.Be-stxt" only) when
-// deciding what to claim. So this can't be enforced by passing a hint into
-// Identify(); it has to gate the call from here, before Identify() is ever
-// reached at all.
-bool
-translator_supports_mime_type(const char* mimeType)
-{
-	BAutolock lock(sTranslatorLock);
-
-	// Registered here, lazily, the same first time the cache below is
-	// built - not in some separate one-time startup path, so a translator
-	// installed later still gets watched from that point on regardless of
-	// when this add-on's own first real call happens to land.
-	// BLooper::AddHandler() requires its target locked, and this runs on a
-	// VolumeWorker thread, not be_app's own.
-	if (!sTranslatorWatcherRegistered && be_app != NULL && be_app->Lock()) {
-		be_app->AddHandler(&sTranslatorWatcher);
-		be_app->Unlock();
-		BTranslatorRoster::Default()->StartWatching(
-			BMessenger(&sTranslatorWatcher));
-		sTranslatorWatcherRegistered = true;
-	}
-
-	if (sSupportedMimeTypes == NULL) {
-		sSupportedMimeTypes = new std::set<BString, CaseInsensitiveLess>;
-
-		translator_id* ids;
-		int32 count;
-		if (BTranslatorRoster::Default()->GetAllTranslators(&ids, &count)
-				== B_OK) {
-			for (int32 i = 0; i < count; i++) {
-				const translation_format* formats;
-				int32 numFormats;
-				if (BTranslatorRoster::Default()->GetInputFormats(ids[i],
-						&formats, &numFormats) != B_OK) {
-					continue;
-				}
-				for (int32 j = 0; j < numFormats; j++) {
-					if (formats[j].MIME[0] != '\0')
-						sSupportedMimeTypes->insert(formats[j].MIME);
-				}
-			}
-			delete[] ids;
-		}
-	}
-
-	return sSupportedMimeTypes->find(mimeType) != sSupportedMimeTypes->end();
-}
-
-
-}	// namespace
 
 
 FullTextAnalyser::FullTextAnalyser(BString name, const BVolume& volume)

@@ -8,12 +8,13 @@ SRCS = \
 	ThumbnailAnalyser.cpp \
 	../shared/RunThumbnailHelper.cpp \
 	../shared/RunIsolatedHelper.cpp \
+	../shared/TranslatorMimeCache.cpp \
 	../IndexServerAddOn.cpp
 
 RDEFS =
 RSRCS =
 
-LIBS = be $(STDCPPLIBS)
+LIBS = be translation $(STDCPPLIBS)
 
 LIBPATHS =
 
