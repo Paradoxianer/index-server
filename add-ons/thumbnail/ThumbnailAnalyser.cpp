@@ -16,6 +16,7 @@
 #include <Node.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <TranslatorFormats.h>
 
 #include "RunThumbnailHelper.h"
 #include "TranslatorMimeCache.h"
@@ -83,7 +84,15 @@ ThumbnailAnalyser::_IsSupportedImage(const entry_ref& ref)
 	// covers anything else the user installs a bitmap-producing
 	// translator for - a PDF page-rendering translator, for instance
 	// (see #32) - without this add-on needing to know about it.
-	return translator_supports_mime_type(mimeType);
+	//
+	// Requiring B_TRANSLATOR_BITMAP specifically (not just "reads this
+	// MIME type" the way FullTextAnalyser's own use of this cache does)
+	// matters here: PDFTextTranslator, for instance, also declares
+	// "application/pdf" as input but only ever produces
+	// B_TRANSLATOR_TEXT - without this check, that alone would have been
+	// enough to make this return true even with no bitmap-capable PDF
+	// translator installed at all.
+	return translator_supports_mime_type(mimeType, B_TRANSLATOR_BITMAP);
 }
 
 

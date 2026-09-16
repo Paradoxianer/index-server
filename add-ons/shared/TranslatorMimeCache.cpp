@@ -7,6 +7,7 @@
  */
 #include "TranslatorMimeCache.h"
 
+#include <map>
 #include <set>
 
 #include <Application.h>
@@ -31,24 +32,28 @@ struct CaseInsensitiveLess {
 };
 
 
-// Serializes access to sSupportedMimeTypes (below) and to
+// Serializes access to sCachesByOutputType (below) and to
 // BTranslatorRoster::Default() while building it - concurrent access to
 // that one process-wide roster from two volumes' worker threads at once
 // has been observed corrupting its internal state badly enough to crash
 // later in unrelated code (see FullTextAnalyser's history, #59/#62).
 BLocker sTranslatorLock("translator mime cache lock");
 
-// Built once, lazily, the first time it's needed rather than eagerly at
-// startup, so this never adds its own delay to an analyser's constructor
-// (which typically runs synchronously for every mounted volume at once
-// from IndexServer::ReadyToRun()). Set back to NULL (not just cleared) by
-// TranslatorWatcher below whenever the roster changes, so the next call
-// rebuilds it the same lazy way.
-std::set<BString, CaseInsensitiveLess>* sSupportedMimeTypes = NULL;
+// One cache per requested output type, built lazily the first time each
+// is actually asked for - FullTextAnalyser only ever needs the
+// B_TRANSLATOR_TEXT one, ThumbnailAnalyser only B_TRANSLATOR_BITMAP, so
+// building the other on demand rather than always building both avoids
+// wasted work for whichever add-on doesn't need it. Cleared entirely (not
+// just one entry) by TranslatorWatcher below whenever the roster changes,
+// so the next call for whichever output type rebuilds from the
+// now-current roster - installing or removing a translator while
+// index_server is already running takes effect on the next file
+// analysed, not only after a restart.
+std::map<uint32, std::set<BString, CaseInsensitiveLess>*> sCachesByOutputType;
 
 
 // Listens for BTranslatorRoster::StartWatching()'s B_TRANSLATOR_ADDED/
-// B_TRANSLATOR_REMOVED notifications and invalidates sSupportedMimeTypes
+// B_TRANSLATOR_REMOVED notifications and invalidates sCachesByOutputType
 // so it gets rebuilt from the now-current roster. Needs a real BLooper to
 // receive messages on, which this shared code doesn't have one of its
 // own - attached to be_app (the calling add-on's own team's
@@ -66,8 +71,12 @@ public:
 		if (message->what == B_TRANSLATOR_ADDED
 			|| message->what == B_TRANSLATOR_REMOVED) {
 			BAutolock lock(sTranslatorLock);
-			delete sSupportedMimeTypes;
-			sSupportedMimeTypes = NULL;
+			for (std::map<uint32, std::set<BString, CaseInsensitiveLess>*>
+					::iterator it = sCachesByOutputType.begin();
+					it != sCachesByOutputType.end(); ++it) {
+				delete it->second;
+			}
+			sCachesByOutputType.clear();
 		} else
 			BHandler::MessageReceived(message);
 	}
@@ -81,12 +90,12 @@ bool sTranslatorWatcherRegistered = false;
 
 
 bool
-translator_supports_mime_type(const char* mimeType)
+translator_supports_mime_type(const char* mimeType, uint32 outputType)
 {
 	BAutolock lock(sTranslatorLock);
 
-	// Registered here, lazily, the same first time the cache below is
-	// built - not in some separate one-time startup path, so a translator
+	// Registered here, lazily, the same first time a cache below is built
+	// - not in some separate one-time startup path, so a translator
 	// installed later still gets watched from that point on regardless of
 	// when the calling add-on's own first real call happens to land.
 	// BLooper::AddHandler() requires its target locked, and this runs on a
@@ -99,28 +108,55 @@ translator_supports_mime_type(const char* mimeType)
 		sTranslatorWatcherRegistered = true;
 	}
 
-	if (sSupportedMimeTypes == NULL) {
-		sSupportedMimeTypes = new std::set<BString, CaseInsensitiveLess>;
+	std::set<BString, CaseInsensitiveLess>*& cache
+		= sCachesByOutputType[outputType];
+	if (cache == NULL) {
+		cache = new std::set<BString, CaseInsensitiveLess>;
 
 		translator_id* ids;
 		int32 count;
 		if (BTranslatorRoster::Default()->GetAllTranslators(&ids, &count)
 				== B_OK) {
 			for (int32 i = 0; i < count; i++) {
-				const translation_format* formats;
-				int32 numFormats;
-				if (BTranslatorRoster::Default()->GetInputFormats(ids[i],
-						&formats, &numFormats) != B_OK) {
+				// A translator declaring an input MIME type says nothing
+				// about what it can actually produce from it - PDFText
+				// Translator, for instance, declares "application/pdf" as
+				// input but only ever produces B_TRANSLATOR_TEXT, never
+				// B_TRANSLATOR_BITMAP. Only translators whose own
+				// GetOutputFormats() declares the requested type count -
+				// checked per translator, not globally, precisely because
+				// declaring an input format is not a promise about every
+				// output format.
+				const translation_format* outputFormats;
+				int32 numOutputFormats;
+				if (BTranslatorRoster::Default()->GetOutputFormats(ids[i],
+						&outputFormats, &numOutputFormats) != B_OK) {
 					continue;
 				}
-				for (int32 j = 0; j < numFormats; j++) {
-					if (formats[j].MIME[0] != '\0')
-						sSupportedMimeTypes->insert(formats[j].MIME);
+				bool producesRequestedType = false;
+				for (int32 k = 0; k < numOutputFormats; k++) {
+					if (outputFormats[k].type == outputType) {
+						producesRequestedType = true;
+						break;
+					}
+				}
+				if (!producesRequestedType)
+					continue;
+
+				const translation_format* inputFormats;
+				int32 numInputFormats;
+				if (BTranslatorRoster::Default()->GetInputFormats(ids[i],
+						&inputFormats, &numInputFormats) != B_OK) {
+					continue;
+				}
+				for (int32 j = 0; j < numInputFormats; j++) {
+					if (inputFormats[j].MIME[0] != '\0')
+						cache->insert(inputFormats[j].MIME);
 				}
 			}
 			delete[] ids;
 		}
 	}
 
-	return sSupportedMimeTypes->find(mimeType) != sSupportedMimeTypes->end();
+	return cache->find(mimeType) != cache->end();
 }

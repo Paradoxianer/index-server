@@ -15,6 +15,7 @@
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
+#include <TranslatorFormats.h>
 
 #include "CLuceneDataBase.h"
 #include "IndexServerPrivate.h"
@@ -258,7 +259,8 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		char mimeType[B_MIME_TYPE_LENGTH];
 		BNodeInfo nodeInfo(&node);
 		if (node.InitCheck() != B_OK || nodeInfo.GetType(mimeType) != B_OK
-				|| !translator_supports_mime_type(mimeType)) {
+				|| !translator_supports_mime_type(mimeType,
+					B_TRANSLATOR_TEXT)) {
 			return false;
 		}
 	}
