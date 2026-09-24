@@ -7,8 +7,8 @@
  */
 
 // Standalone helper spawned by FullTextAnalyser (via RunTranslatorHelper.h,
-// add-ons/shared/) to run exactly one BTranslatorRoster call - Identify()
-// or Translate() - in a throwaway team of its own. BTranslatorRoster loads
+// add-ons/shared/) to run one BTranslatorRoster::Translate() call in a
+// throwaway team of its own. BTranslatorRoster loads
 // whatever third-party translator add-on claims a file's format and runs
 // its code directly against untrusted file content; a translator that
 // segfaults on malformed input used to take index_server itself down with
@@ -26,13 +26,12 @@
 // reaches the parent's wait.
 //
 // usage:
-//   IndexServerTranslateHelper identify <sourcePath>
-//   IndexServerTranslateHelper translate <sourcePath> <destPath>
+//   IndexServerTranslateHelper <sourcePath> <destPath>
 //
 // Exit code 0 on success, nonzero on any handled failure (unsupported
 // format, read/write error). A hard crash never returns an exit code at
 // all - the parent tells that apart from "still running" purely by the
-// team being gone, which is why "translate" only ever creates <destPath>
+// team being gone, which is why this only ever creates <destPath>
 // itself on success: written to a sibling ".part" file first, then
 // rename()d into place, so a crash mid-write can never leave a partial
 // file sitting at the path the parent expects a finished result at.
@@ -46,20 +45,6 @@
 #include <String.h>
 #include <TranslatorFormats.h>
 #include <TranslatorRoster.h>
-
-
-static int
-do_identify(const char* sourcePath)
-{
-	BFile source(sourcePath, B_READ_ONLY);
-	if (source.InitCheck() != B_OK)
-		return 1;
-
-	translator_info info;
-	status_t status = BTranslatorRoster::Default()->Identify(&source, NULL,
-		&info, 0, NULL, B_TRANSLATOR_TEXT);
-	return status == B_OK ? 0 : 1;
-}
 
 
 static int
@@ -107,13 +92,9 @@ main(int argc, char** argv)
 	// this file's own comment above for why.
 	disable_debugger(1);
 
-	if (argc == 3 && strcmp(argv[1], "identify") == 0)
-		return do_identify(argv[2]);
-	if (argc == 4 && strcmp(argv[1], "translate") == 0)
-		return do_translate(argv[2], argv[3]);
+	if (argc == 3)
+		return do_translate(argv[1], argv[2]);
 
-	fprintf(stderr,
-		"usage: %s identify <path> | translate <path> <destPath>\n",
-		argv[0]);
+	fprintf(stderr, "usage: %s <sourcePath> <destPath>\n", argv[0]);
 	return 2;
 }

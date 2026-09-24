@@ -32,10 +32,6 @@
 #endif
 
 
-// Identify() is normally just header sniffing, but a misbehaving translator
-// must not be allowed to stall the whole VolumeWorker thread over it.
-const bigtime_t kIdentifyTimeout = 5 * 1000000;
-
 // A hung or pathological translator must not stall the whole VolumeWorker
 // thread either (it processes every entry of a volume serially).
 const bigtime_t kTranslateTimeout = 30 * 1000000;
@@ -126,8 +122,8 @@ FullTextAnalyser::AnalyseEntry(const entry_ref& ref)
 }
 
 
-// A slow individual entry - waiting on kTranslateTimeout, kIdentifyTimeout,
-// or the shared CLucene write lock, all of which can each individually take
+// A slow individual entry - waiting on kTranslateTimeout or the shared
+// CLucene write lock, all of which can each individually take
 // several seconds under load - delays every Progress()
 // call after it by however long it took, since AnalyseEntry() is called
 // synchronously once per entry from CatchUpAnalyser::_CatchUp()'s loop. If
@@ -265,16 +261,12 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 		}
 	}
 
-	status_t status = run_translator_helper(path.Path(), NULL,
-		kIdentifyTimeout);
-	STRACE("_InterestingEntry %s: run_translator_helper identify status=%"
-		B_PRId32 "\n", ref.name, (int32)status);
-	// Which translator claimed the file isn't visible here anymore now
-	// that Identify() runs isolated in its own team (see
-	// RunTranslatorHelper.h) - a repeatedly failing MIME type is still
-	// diagnosable by testing installed translators individually, just not
-	// from this log line the way it used to be.
-	return status == B_OK;
+	// Whether a translator can actually turn this into text is decided by
+	// the one helper call in _QueueTranslated() - BTranslatorRoster::
+	// Translate() runs the same Identify() itself, so a separate identify
+	// call here would only cost a second helper process start (~55 ms each,
+	// mostly loading every translator add-on) per file.
+	return true;
 }
 
 

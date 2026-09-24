@@ -15,13 +15,7 @@ status_t
 run_translator_helper(const char* sourcePath, const char* destPath,
 	bigtime_t timeout)
 {
-	if (destPath != NULL) {
-		const char* argv[] = { kTranslateHelperPath.String(), "translate",
-			sourcePath, destPath, NULL };
-		return run_isolated_helper(argv, timeout);
-	}
-
-	const char* argv[] = { kTranslateHelperPath.String(), "identify",
-		sourcePath, NULL };
+	const char* argv[] = { kTranslateHelperPath.String(), sourcePath,
+		destPath, NULL };
 	return run_isolated_helper(argv, timeout);
 }
