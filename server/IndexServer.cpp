@@ -80,9 +80,28 @@ AnalyserMonitorHandler::AddOnDisabled(const add_on_entry_info* entryInfo)
 };
 
 
-IndexServer::IndexServer()
+// initGUI=false: nothing here needs an app_server connection at startup -
+// the two BTranslatorRoster call sites that used to need one both run
+// isolated in their own helper processes now (see RunTranslatorHelper.h,
+// RunThumbnailHelper.h), and BNotification::Send() (IndexProgressNotifier)
+// never needed one to begin with. The only thing that does is
+// AboutRequested()'s BAboutWindow, which calls InitGUIContext() itself,
+// lazily, the one time a user actually asks for it.
+//
+// This isn't just tidiness: a plain BApplication(signature) with no error
+// parameter has app_server connect synchronously during construction, and
+// if that connection fails (e.g. a timing race where index_server starts
+// before app_server has created its port) BApplication::_InitData() calls
+// exit(0) right there - a silent, successful-looking exit before main()
+// even reaches indexServer.Run(). To launch_daemon that would look like
+// the job ran to completion, not like it crashed, so it wouldn't be
+// restarted - index_server would simply not be running, with nothing in
+// any log explaining why. Taking app_server out of index_server's startup
+// path entirely removes that whole failure mode rather than trying to
+// win a race against it.
+IndexServer::IndexServer(status_t& error)
 	:
-	BApplication("application/x-vnd.Haiku-index_server"),
+	BServer("application/x-vnd.Haiku-index_server", false, &error),
 	fVolumeObserverHandler(this),
 	fAddOnMonitorHandler(this),
 	fPulseRunner(NULL)
@@ -120,12 +139,24 @@ void
 IndexServer::AboutRequested()
 {
 	// index_server has no window of its own to attach an "About" menu item
-	// to, but B_ABOUT_REQUESTED still reaches it - Deskbar's Team menu (and
-	// Tracker scripting) can send it to any running application regardless
-	// of whether it has a visible window. Worth having anyway: which build
-	// is actually running is exactly the kind of thing this project's own
-	// history of debug vs. packaged vs. dev-install confusion could have
-	// used a quick answer to.
+	// to, and - contrary to what this comment used to claim - Deskbar's
+	// Team menu doesn't reach it either: TBarApp::AddTeam() skips any team
+	// whose app_info carries B_BACKGROUND_APP, and index_server.rdef
+	// declares exactly that (verified at runtime: flags=0x6). So this is
+	// only reachable by sending B_ABOUT_REQUESTED directly, via scripting
+	// or a BMessenger from another app. Kept anyway because it costs
+	// nothing and answers "which build is actually running" - the same
+	// question Index Search's and the settings preflet's own About windows
+	// answer for users who have something to click on.
+	//
+	// This is also the one place in the whole process that needs a real
+	// app_server connection (see the constructor's own comment on why
+	// startup itself no longer does) - BAboutWindow is a BWindow, and a
+	// BWindow can't exist without one. InitGUIContext() is a no-op if
+	// that connection already exists.
+	if (InitGUIContext() != B_OK)
+		return;
+
 	BAboutWindow* window = new BAboutWindow("Index Server",
 		"application/x-vnd.Haiku-index_server");
 	window->AddDescription(

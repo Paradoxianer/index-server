@@ -28,6 +28,17 @@ using namespace lucene::analysis::standard;
 const TCHAR* const kContentsField = _T("contents");
 const TCHAR* const kPathField = _T("path");
 
+// Bump whenever CLucene's own on-disk field format changes (e.g. a field
+// switching STORE_NO -> STORE_YES) in a way that makes an existing index
+// unreadable, or silently wrong to read, with the new code - see #12. An
+// index built under an older version isn't migrated in place; it's wiped
+// and reindexed from scratch (the same "Reindex Everything" machinery the
+// settings preflet's own button uses - see CLuceneWriteDataBase's
+// constructor), since normal catch up can already rebuild it and a real
+// in-place migration would need to duplicate CLucene's own format-
+// specific parsing for no lasting benefit.
+const int32 kCLuceneSchemaVersion = 1;
+
 
 class CLuceneWriteDataBase : public TextWriteDataBase {
 public:

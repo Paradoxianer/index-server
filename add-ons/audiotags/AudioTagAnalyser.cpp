@@ -14,6 +14,7 @@
 #include <tag.h>
 #include <fileref.h>
 
+#include "AttributeHelper.h"
 #include "RunWithTimeout.h"
 
 
@@ -129,12 +130,9 @@ AudioTagAnalyser::AnalyseEntry(const entry_ref& ref)
 
 	BFile file(&ref, B_READ_ONLY);
 	if (file.InitCheck() == B_OK) {
-		file.WriteAttr("Audio:Artist", B_STRING_TYPE, 0,
-			cookie->artist.String(), cookie->artist.Length());
-		file.WriteAttr("Media:Title", B_STRING_TYPE, 0,
-			cookie->title.String(), cookie->title.Length());
-		file.WriteAttr("Audio:Album", B_STRING_TYPE, 0,
-			cookie->album.String(), cookie->album.Length());
+		write_string_attr_if_empty(file, "Audio:Artist", cookie->artist);
+		write_string_attr_if_empty(file, "Media:Title", cookie->title);
+		write_string_attr_if_empty(file, "Audio:Album", cookie->album);
 	}
 	delete cookie;
 }

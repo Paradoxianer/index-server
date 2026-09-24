@@ -9,6 +9,7 @@
 #include "IndexServer.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include <FindDirectory.h>
 #include <Path.h>
@@ -56,7 +57,18 @@ main()
 	// for anything but a post-mortem read after a clean exit.
 	setvbuf(stdout, NULL, _IOLBF, 0);
 
-	IndexServer indexServer;
+	// BServer's constructor takes error by out-parameter instead of
+	// silently exit(0)-ing on failure the way a plain, no-error-param
+	// BApplication(signature) would - see the constructor's own comment
+	// in IndexServer.cpp for why that distinction matters here. Log it
+	// rather than letting it vanish the same way.
+	status_t error = B_OK;
+	IndexServer indexServer(error);
+	if (error != B_OK) {
+		printf("IndexServer failed to start: %s\n", strerror(error));
+		return 1;
+	}
+
 	indexServer.Run();
 	return 0;
 }

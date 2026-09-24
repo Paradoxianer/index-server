@@ -1,28 +1,23 @@
 ## Haiku Generic Makefile v2.6 ##
 
-NAME = AudioTagAnalyser
-TYPE = SHARED
+NAME = QueryClient
+TYPE = APP
 APP_MIME_SIG =
 
 SRCS = \
-	AudioTagAnalyser.cpp \
-	../shared/AttributeHelper.cpp \
-	../shared/RunWithTimeout.cpp \
-	../IndexServerAddOn.cpp
+	QueryClient.cpp
 
 RDEFS =
 RSRCS =
 
-LIBS = be tag $(STDCPPLIBS)
+LIBS = be $(STDCPPLIBS)
 
 LIBPATHS =
 
 SYSTEM_INCLUDE_PATHS = \
-	../../headers \
-	/boot/system/develop/headers/taglib
+	../headers
 
-LOCAL_INCLUDE_PATHS = \
-	../shared
+LOCAL_INCLUDE_PATHS =
 
 OPTIMIZE :=
 LOCALES =

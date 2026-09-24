@@ -1,28 +1,22 @@
 ## Haiku Generic Makefile v2.6 ##
 
-NAME = AudioTagAnalyser
-TYPE = SHARED
-APP_MIME_SIG =
+NAME = IndexServerThumbnailHelper
+TYPE = APP
+APP_MIME_SIG = application/x-vnd.Haiku-index_server_thumbnail_helper
 
 SRCS = \
-	AudioTagAnalyser.cpp \
-	../shared/AttributeHelper.cpp \
-	../shared/RunWithTimeout.cpp \
-	../IndexServerAddOn.cpp
+	ThumbnailHelper.cpp
 
-RDEFS =
+RDEFS = ThumbnailHelper.rdef
 RSRCS =
 
-LIBS = be tag $(STDCPPLIBS)
+LIBS = be translation $(STDCPPLIBS)
 
 LIBPATHS =
 
-SYSTEM_INCLUDE_PATHS = \
-	../../headers \
-	/boot/system/develop/headers/taglib
+SYSTEM_INCLUDE_PATHS =
 
-LOCAL_INCLUDE_PATHS = \
-	../shared
+LOCAL_INCLUDE_PATHS =
 
 OPTIMIZE :=
 LOCALES =

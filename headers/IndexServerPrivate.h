@@ -28,6 +28,20 @@ const BString kIndexServerSignature = "application/x-vnd.Haiku-index_server";
 // needing to check which package is installed.
 const BString kIndexServerVersion = "1.0.0-7";
 
+// Where dev.sh installs the standalone translator-isolation helper (see
+// add-ons/shared/RunTranslatorHelper.h) - the same directory as
+// index_server itself, deliberately not ADDON_DIR, so IndexServer's own
+// AddOnMonitorHandler never tries to load it as an analyser add-on.
+const BString kTranslateHelperPath
+	= "/boot/system/non-packaged/servers/IndexServerTranslateHelper";
+
+// Same reasoning as kTranslateHelperPath above, but for the thumbnail
+// isolation helper (see add-ons/shared/RunThumbnailHelper.h) - unlike the
+// translate helper, this one is a real BApplication (needs a live
+// app_server connection for BBitmap/BView composition), not headless.
+const BString kThumbnailHelperPath
+	= "/boot/system/non-packaged/servers/IndexServerThumbnailHelper";
+
 const BString kIndexServerDirectory = "index_server";
 const BString kVolumeStatusFileName = "VolumeStatus";
 const BString kSettingsFileName = "settings";

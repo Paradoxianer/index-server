@@ -21,8 +21,8 @@ SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
 
-TARGETS="server add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app"
-BINARY_NAMES="index_server FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch"
+TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
+BINARY_NAMES="index_server IndexServerTranslateHelper IndexServerThumbnailHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
 
 cmd="${1:-build}"
 
@@ -62,6 +62,8 @@ install() {
   ssh "$HAIKU_HOST" "mkdir -p $SERVER_DIR $ADDON_DIR $PREFLET_DIR $APPS_DIR && \
     install_one() { cp \"\$1\" \"\$2.new\" && mv \"\$2.new\" \"\$2\"; }; \
     install_one $(_objdir server)/index_server $SERVER_DIR/index_server && \
+    install_one $(_objdir translate-helper)/IndexServerTranslateHelper $SERVER_DIR/IndexServerTranslateHelper && \
+    install_one $(_objdir thumbnail-helper)/IndexServerThumbnailHelper $SERVER_DIR/IndexServerThumbnailHelper && \
     install_one $(_objdir add-ons/fulltext)/FullTextAnalyser $ADDON_DIR/FullTextAnalyser && \
     install_one $(_objdir add-ons/audiotags)/AudioTagAnalyser $ADDON_DIR/AudioTagAnalyser && \
     install_one $(_objdir add-ons/exif)/ExifAnalyser $ADDON_DIR/ExifAnalyser && \
@@ -146,7 +148,10 @@ package() {
       $PKG_STAGE_DIR/data/deskbar/menu/Applications/ && \
     cp -P $REMOTE_TREE/server/data/deskbar/menu/Preferences/IndexServerSettings \
       $PKG_STAGE_DIR/data/deskbar/menu/Preferences/ && \
-    cp $(_robjdir server)/index_server $PKG_STAGE_DIR/servers/ && \
+    cp $(_robjdir server)/index_server \
+      $(_robjdir translate-helper)/IndexServerTranslateHelper \
+      $(_robjdir thumbnail-helper)/IndexServerThumbnailHelper \
+      $PKG_STAGE_DIR/servers/ && \
     cp $(_robjdir add-ons/fulltext)/FullTextAnalyser \
       $(_robjdir add-ons/audiotags)/AudioTagAnalyser \
       $(_robjdir add-ons/exif)/ExifAnalyser \
@@ -169,6 +174,20 @@ package_install() {
 
 package_uninstall() {
   ssh "$HAIKU_HOST" "pkgman uninstall -y index_server"
+}
+
+# Builds, starts a clean index_server, and runs tests/run_tests.sh against
+# it via QueryClient (see tests/QueryClient.cpp for why a dedicated CLI
+# client is used instead of hey/GUI scripting). Leaves the server running
+# afterwards so a failure can be investigated with `./dev.sh status`.
+regression_test() {
+  build
+  stop
+  install
+  ssh "$HAIKU_HOST" "rm -f ~/$SERVER_LOG $SETTINGS_FILE && \
+    ($SERVER_DIR/index_server > ~/$SERVER_LOG 2>&1 &) && sleep 3"
+  QUERY_CLIENT="$(_objdir tests)/QueryClient" HAIKU_HOST="$HAIKU_HOST" \
+    FIXTURES_DIR="$FIXTURES_DIR" bash "$LOCAL_TREE/tests/run_tests.sh"
 }
 
 debug_report() {
@@ -195,5 +214,6 @@ case "$cmd" in
   package) package ;;
   package-install) package_install ;;
   package-uninstall) package_uninstall ;;
-  *) echo "usage: $0 {bootstrap|sync|build|install|run|build-and-run|start-logged|debug-log|stop|status|debug-report|package|package-install|package-uninstall}"; exit 1 ;;
+  test) regression_test ;;
+  *) echo "usage: $0 {bootstrap|sync|build|install|run|build-and-run|start-logged|debug-log|stop|status|debug-report|package|package-install|package-uninstall|test}"; exit 1 ;;
 esac
