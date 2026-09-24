@@ -7,7 +7,7 @@ APP_MIME_SIG = application/x-vnd.Haiku-index_server_thumbnail_helper
 SRCS = \
 	ThumbnailHelper.cpp
 
-RDEFS =
+RDEFS = ThumbnailHelper.rdef
 RSRCS =
 
 LIBS = be translation $(STDCPPLIBS)
