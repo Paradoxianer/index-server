@@ -19,7 +19,8 @@ LIBPATHS =
 
 SYSTEM_INCLUDE_PATHS = \
 	../../headers \
-	/boot/system/develop/headers/taglib
+	/boot/system/develop/headers/taglib \
+	/boot/system/develop/headers/x86/taglib
 
 LOCAL_INCLUDE_PATHS = \
 	../shared
