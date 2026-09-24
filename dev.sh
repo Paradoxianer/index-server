@@ -6,7 +6,7 @@
 # tree needed.
 set -euo pipefail
 
-HAIKU_HOST="haiku"
+HAIKU_HOST="${HAIKU_HOST:-haiku}"
 REMOTE_TREE="~/repos/index-server"
 LOCAL_TREE="$HOME/repos/index-server"
 ADDON_DIR="/boot/system/non-packaged/add-ons/index_server"
@@ -20,6 +20,16 @@ SETTINGS_DIR="~/config/settings/index_server"
 SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
+MAKE="make"
+
+# 32-bit Haiku: build with the secondary x86 (gcc 13) toolchain and its
+# devel packages, e.g. HAIKU_HOST=haiku32 HAIKU_ARCH=x86 ./dev.sh build
+if [ "${HAIKU_ARCH:-}" = "x86" ]; then
+  MAKE="setarch x86 make"
+  DEVEL_PACKAGES="clucene_x86_devel taglib_x86_devel libexif_x86_devel"
+  # A secondary-architecture process only looks in add-ons/x86/.
+  ADDON_DIR="/boot/system/non-packaged/add-ons/x86/index_server"
+fi
 
 TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
 BINARY_NAMES="index_server IndexServerTranslateHelper IndexServerThumbnailHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
@@ -49,7 +59,7 @@ build() {
   ssh "$HAIKU_HOST" "cd $REMOTE_TREE && rm -f build.log && \
     for target in $TARGETS; do \
       echo \"=== \$target ===\" >> build.log; \
-      (cd \$target && make) >> build.log 2>&1; \
+      (cd \$target && $MAKE) >> build.log 2>&1; \
     done; \
     cat build.log"
   scp "$HAIKU_HOST:$REMOTE_TREE/build.log" ./build.log
