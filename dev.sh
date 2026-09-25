@@ -21,6 +21,8 @@ SETTINGS_FILE="$SETTINGS_DIR/settings"
 DEBUG_LOG="~/index_server_debug.log"
 DEVEL_PACKAGES="clucene_devel taglib_devel libexif_devel"
 MAKE="make"
+PKG_NAME="index_server"
+PKG_ADDONS_SUBDIR="add-ons/index_server"
 
 # 32-bit Haiku: build with the secondary x86 (gcc 13) toolchain and its
 # devel packages, e.g. HAIKU_HOST=haiku32 HAIKU_ARCH=x86 ./dev.sh build
@@ -29,6 +31,8 @@ if [ "${HAIKU_ARCH:-}" = "x86" ]; then
   DEVEL_PACKAGES="clucene_x86_devel taglib_x86_devel libexif_x86_devel"
   # A secondary-architecture process only looks in add-ons/x86/.
   ADDON_DIR="/boot/system/non-packaged/add-ons/x86/index_server"
+  PKG_NAME="index_server_x86"
+  PKG_ADDONS_SUBDIR="add-ons/x86/index_server"
 fi
 
 TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
@@ -142,14 +146,34 @@ _robjdir() {
 # convention linkcatkeys here doesn't accept as-is) - ships English-only
 # for now.
 PKG_STAGE_DIR="~/index_server_pkg_stage"
+# The package description for the current architecture. The secondary
+# architecture package is named index_server_x86, has architecture
+# x86_gcc2 (what x86_gcc2h hybrid images call their secondary packages)
+# and depends on the _x86 flavours of its dependencies.
+_package_info() {
+  if [ "${HAIKU_ARCH:-}" = "x86" ]; then
+    sed -E \
+      -e 's/^(name[[:space:]]+)index_server$/\1index_server_x86/' \
+      -e 's/^(architecture[[:space:]]+)x86_64$/\1x86_gcc2/' \
+      -e 's/^([[:space:]]+)index_server = /\1index_server_x86 = /' \
+      -e 's/^([[:space:]]+)(haiku|clucene|taglib|libexif) >=/\1\2_x86 >=/' \
+      "$LOCAL_TREE/server/.PackageInfo"
+  else
+    cat "$LOCAL_TREE/server/.PackageInfo"
+  fi
+}
+
 package() {
   build
+  _package_info > "./$PKG_NAME.PackageInfo"
+  scp "./$PKG_NAME.PackageInfo" "$HAIKU_HOST:~/$PKG_NAME.PackageInfo"
+  rm -f "./$PKG_NAME.PackageInfo"
   ssh "$HAIKU_HOST" "rm -rf $PKG_STAGE_DIR && mkdir -p \
       $PKG_STAGE_DIR/data/launch \
       $PKG_STAGE_DIR/data/deskbar/menu/Applications \
       $PKG_STAGE_DIR/data/deskbar/menu/Preferences \
       $PKG_STAGE_DIR/servers \
-      $PKG_STAGE_DIR/add-ons/index_server \
+      $PKG_STAGE_DIR/$PKG_ADDONS_SUBDIR \
       $PKG_STAGE_DIR/preferences \
       $PKG_STAGE_DIR/apps && \
     cp $REMOTE_TREE/server/data/launch/index_server \
@@ -168,22 +192,22 @@ package() {
       $(_robjdir add-ons/mediakit)/MediaKitAnalyser \
       $(_robjdir add-ons/mail)/MailAnalyser \
       $(_robjdir add-ons/thumbnail)/ThumbnailAnalyser \
-      $PKG_STAGE_DIR/add-ons/index_server/ && \
+      $PKG_STAGE_DIR/$PKG_ADDONS_SUBDIR/ && \
     cp $(_robjdir preferences)/IndexServerSettings $PKG_STAGE_DIR/preferences/ && \
     cp $(_robjdir search-app)/IndexServerSearch $PKG_STAGE_DIR/apps/ && \
-    rm -f ~/index_server.hpkg && \
+    rm -f ~/$PKG_NAME.hpkg && \
     cd $PKG_STAGE_DIR && \
-    package create -i $REMOTE_TREE/server/.PackageInfo -C . ~/index_server.hpkg"
-  scp "$HAIKU_HOST:~/index_server.hpkg" ./index_server.hpkg
+    package create -i ~/$PKG_NAME.PackageInfo -C . ~/$PKG_NAME.hpkg"
+  scp "$HAIKU_HOST:~/$PKG_NAME.hpkg" "./$PKG_NAME.hpkg"
 }
 
 package_install() {
-  scp ./index_server.hpkg "$HAIKU_HOST:~/index_server.hpkg"
-  ssh "$HAIKU_HOST" "pkgman install -y ~/index_server.hpkg"
+  scp "./$PKG_NAME.hpkg" "$HAIKU_HOST:~/$PKG_NAME.hpkg"
+  ssh "$HAIKU_HOST" "pkgman install -y ~/$PKG_NAME.hpkg"
 }
 
 package_uninstall() {
-  ssh "$HAIKU_HOST" "pkgman uninstall -y index_server"
+  ssh "$HAIKU_HOST" "pkgman uninstall -y $PKG_NAME"
 }
 
 # Builds, starts a clean index_server, and runs tests/run_tests.sh against
