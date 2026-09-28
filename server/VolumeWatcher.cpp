@@ -8,6 +8,7 @@
 
 #include "VolumeWatcher.h"
 
+#include <stdio.h>
 #include <sys/stat.h>
 
 #include <Autolock.h>
@@ -92,8 +93,24 @@ WatchNameHandler::MessageReceived(BMessage* msg)
 			case B_STAT_CHANGED: {
 				int32 statFields;
 				msg->FindInt32("fields", &statFields);
-				if ((statFields & B_STAT_MODIFICATION_TIME) == 0)
+
+				// A real content change should bump B_STAT_MODIFICATION_TIME,
+				// but doesn't always: overwriting a file in place through
+				// BFile::Seek()+Write()+SetSize() (what BTranslationUtils::
+				// WriteStyledEditFile() - StyledEdit's own save path - does)
+				// has been observed to notify with B_STAT_SIZE set but
+				// B_STAT_MODIFICATION_TIME never set at all for that write,
+				// silently dropping the edit from re-indexing until a full
+				// reindex (which checks the same bit and misses it too).
+				// React to either - a size change on its own is just as
+				// strong a signal real content changed. Plain attribute
+				// writes (styles, wrap, caret position, ...) only ever
+				// bump B_STAT_CHANGE_TIME, never SIZE or MODIFICATION_TIME,
+				// so this doesn't turn those into spurious reindex triggers.
+				if ((statFields
+						& (B_STAT_MODIFICATION_TIME | B_STAT_SIZE)) == 0) {
 					break;
+				}
 
 				dev_t device;
 				ino_t node;

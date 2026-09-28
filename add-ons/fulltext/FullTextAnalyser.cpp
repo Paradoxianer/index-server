@@ -12,6 +12,7 @@
 
 #include <File.h>
 #include <Mime.h>
+#include <MimeType.h>
 #include <Node.h>
 #include <NodeInfo.h>
 #include <String.h>
@@ -232,6 +233,29 @@ FullTextAnalyser::_InterestingEntry(const entry_ref& ref)
 	// B_UPDATE_MIME_INFO_NO_FORCE leaves an already-set type alone.
 	BPath path(&ref);
 	update_mime_info(path.Path(), 0, 1, B_UPDATE_MIME_INFO_NO_FORCE);
+
+	// An empty file - how "new text file" in Tracker and most editors starts
+	// out - is typed application/octet-stream right away, and keeps that
+	// type after text is written into it: NO_FORCE above never revisits a
+	// set type, so the content was never looked at again and the file
+	// silently stayed out of the index until a full reindex (which does the
+	// same check and misses it just the same). Re-sniff that one generic
+	// type; a file that still sniffs as octet-stream is left alone.
+	{
+		BNode node(&ref);
+		BNodeInfo nodeInfo(&node);
+		char type[B_MIME_TYPE_LENGTH];
+		if (node.InitCheck() == B_OK && nodeInfo.GetType(type) == B_OK
+			&& strcasecmp(type, "application/octet-stream") == 0) {
+			BMimeType guessed;
+			if (BMimeType::GuessMimeType(&ref, &guessed) == B_OK
+				&& guessed.IsValid()
+				&& strcasecmp(guessed.Type(), "application/octet-stream")
+					!= 0) {
+				nodeInfo.SetType(guessed.Type());
+			}
+		}
+	}
 
 	// Plain text is always indexable content on its own - no translator can
 	// even produce B_TRANSLATOR_TEXT from it, so asking BTranslatorRoster to

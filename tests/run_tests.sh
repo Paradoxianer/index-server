@@ -172,6 +172,21 @@ else
   fail "translator crash guard - fixture $FIXTURES_DIR/attr_test.jpg missing"
 fi
 
+# --- Test 9: a file created empty and filled later is indexed ------------
+# How "new text file" in Tracker (and most editors) works: the empty file
+# is typed application/octet-stream at creation and keeps that type after
+# text is written into it, so it used to stay out of the index for good.
+late_marker="latefill_${RUN_ID}"
+ssh "$HAIKU_HOST" ": > $TEST_DIR/late_fill.txt"
+sleep 4
+ssh "$HAIKU_HOST" "echo 'content $late_marker here' > $TEST_DIR/late_fill.txt"
+sleep 8
+if query "$late_marker" | grep -q "late_fill.txt"; then
+  pass "file created empty and filled later is indexed"
+else
+  fail "file created empty and filled later - '$late_marker' not found (stuck on application/octet-stream?)"
+fi
+
 # --- cleanup -------------------------------------------------------------
 ssh "$HAIKU_HOST" "rm -rf $TEST_DIR"
 
