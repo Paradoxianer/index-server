@@ -12,6 +12,7 @@ set -uo pipefail
 
 HAIKU_HOST="${HAIKU_HOST:-haiku}"
 QUERY_CLIENT="${QUERY_CLIENT:?QUERY_CLIENT path not set}"
+QUERY_MONITOR_CLIENT="${QUERY_MONITOR_CLIENT:?QUERY_MONITOR_CLIENT path not set}"
 FIXTURES_DIR="${FIXTURES_DIR:-~/index_test_fixtures}"
 TEST_DIR="/boot/home/Desktop/index_server_tests"
 RUN_ID="$(date +%s)"
@@ -185,6 +186,28 @@ if query "$late_marker" | grep -q "late_fill.txt"; then
   pass "file created empty and filled later is indexed"
 else
   fail "file created empty and filled later - '$late_marker' not found (stuck on application/octet-stream?)"
+fi
+
+# --- Test 10: query monitor pushes added/removed as matches change (#19) -
+# QueryMonitorClient registers a monitor, then this test creates a file
+# matching it (expecting an "added" push within the ~500ms recheck pulse)
+# and deletes it again (expecting "removed") while the client is still
+# running, capturing everything it printed to a temp file for afterwards.
+monitor_marker="monitortest_${RUN_ID}"
+monitor_out="/tmp/qmc_${RUN_ID}.out"
+ssh "$HAIKU_HOST" "rm -f $monitor_out
+  ($QUERY_MONITOR_CLIENT '$monitor_marker' 10 > $monitor_out 2>/dev/null &)"
+sleep 2
+ssh "$HAIKU_HOST" "echo 'content $monitor_marker' > $TEST_DIR/monitor.txt"
+sleep 4
+ssh "$HAIKU_HOST" "rm -f $TEST_DIR/monitor.txt"
+sleep 6
+monitor_output="$(ssh "$HAIKU_HOST" "cat $monitor_out; rm -f $monitor_out")"
+if echo "$monitor_output" | grep -q "^added.*monitor\.txt$" \
+		&& echo "$monitor_output" | grep -q "^removed.*monitor\.txt$"; then
+  pass "query monitor pushes added/removed as matches change (#19)"
+else
+  fail "query monitor - expected added+removed for monitor.txt, got: $monitor_output"
 fi
 
 # --- cleanup -------------------------------------------------------------

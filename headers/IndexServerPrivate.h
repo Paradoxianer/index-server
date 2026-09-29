@@ -173,4 +173,52 @@ const uint32 kMsgUnregisterProgressObserver = 'ISUO';
 //! just analysed - empty for the final "done" push, where current==total).
 const uint32 kMsgIndexProgress = 'ISPr';
 
+//! Sent to the index_server BApplication to register a persistent query -
+//! the Node Monitor equivalent for search results (issue #19). Carries
+//! "query" (BString), optionally "maxResults" (int32, default 100), and
+//! "target" (BMessenger) - where kMsgQueryMonitorUpdate pushes go, not
+//! necessarily the sender itself. Send this asynchronously with a
+//! replyTo handler, same reasoning as kMsgQuery. Answered via
+//! BMessage::SendReply() with "what" set to kMsgStartQueryMonitorReply
+//! and "monitorToken" (int32) - keep this to later send
+//! kMsgStopQueryMonitor. Immediately followed by one push to "target"
+//! carrying every currently matching result (as if newly added), so a
+//! client needs only this one call to get both an initial result set
+//! and live updates after it, not a separate kMsgQuery first.
+const uint32 kMsgStartQueryMonitor = 'ISMS';
+
+//! "what" of kMsgStartQueryMonitor's reply - see kMsgStartQueryMonitor.
+const uint32 kMsgStartQueryMonitorReply = 'ISMR';
+
+//! Sent to the index_server BApplication to stop a query monitor started
+//! with kMsgStartQueryMonitor; carries "monitorToken" (int32, from that
+//! call's reply). No reply is sent. Not strictly required for cleanup -
+//! a monitor whose target has quit is dropped automatically the next
+//! time it would have been notified, since a failed SendMessage() is the
+//! only way index_server can tell - but sending this is faster and
+//! quieter than waiting for that to happen.
+const uint32 kMsgStopQueryMonitor = 'ISMP';
+
+//! Pushed by index_server to a query monitor's registered "target"
+//! whenever its result set changes (or once, right after
+//! kMsgStartQueryMonitor, with the initial result set). Carries
+//! "monitorToken" (int32) and, for whichever changed:
+//!   - "addedRefs" (entry_ref) + "addedScores" (float, same order) -
+//!     newly matching documents, or an existing match whose score
+//!     changed (re-sent with the same ref rather than as a separate
+//!     "updated" list - the ref is the stable identity to key any UI
+//!     list on either way).
+//!   - "removedRefs" (entry_ref) - documents that no longer match.
+//! Either list can be empty but never both - nothing is pushed when a
+//! recheck finds no change at all.
+const uint32 kMsgQueryMonitorUpdate = 'ISMU';
+
+//! index_server internal only, not part of the public protocol above -
+//! posted to be_app by VolumeWorker::_Work() (VolumeWatcher.cpp) after a
+//! batch that changed the index, so IndexServer knows every registered
+//! query monitor needs rechecking against the now-current index. Declared
+//! here (not as a IndexServer.cpp-local constant) because VolumeWatcher.cpp
+//! needs the same value.
+const uint32 kMsgIndexContentChanged = 'ISIC';
+
 #endif // INDEX_SERVER_PRIVATE_H

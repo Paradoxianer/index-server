@@ -11,8 +11,10 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+#include <Application.h>
 #include <Autolock.h>
 #include <Directory.h>
+#include <Messenger.h>
 #include <Mime.h>
 #include <Node.h>
 #include <NodeInfo.h>
@@ -412,6 +414,14 @@ VolumeWorker::_Work()
 	collection.movedFromList->clear();
 
 	LastEntry();
+
+	// This batch could have changed which documents match a registered
+	// query monitor (issue #19), even though this VolumeWorker has no
+	// idea whether any monitor exists or what it's for - that's
+	// IndexServer's own job, reached via be_app since neither
+	// VolumeWorker nor VolumeWatcher otherwise holds a reference to it.
+	BMessenger(be_app).SendMessage(kMsgIndexContentChanged);
+
 	PostMessage(kTriggerWork);
 
 	_SetBusy(false);
