@@ -17,6 +17,7 @@
 #include <Catalog.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
+#include <Dragger.h>
 #include <Entry.h>
 #include <File.h>
 #include <LayoutBuilder.h>
@@ -34,6 +35,7 @@
 #include <TextControl.h>
 
 #include "IndexServerPrivate.h"
+#include "SearchReplicantView.h"
 
 
 #define DEBUG_SEARCH_WINDOW
@@ -389,6 +391,23 @@ SearchWindow::SearchWindow()
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
 
+	// A live-updating preview of the current query, draggable out onto
+	// the Desktop as a standalone replicant (issue #33) - see
+	// SearchReplicantView.h. Pinned to a fixed size regardless of the
+	// window's own size: it's a small corner widget, not meant to grow
+	// into the space a wide results window has to spare.
+	BRect replicantFrame(0, 0, 219, 69);
+	fReplicantPreview = new SearchReplicantView(replicantFrame, "");
+	fReplicantPreview->SetExplicitMinSize(BSize(220, 70));
+	fReplicantPreview->SetExplicitMaxSize(BSize(220, 70));
+
+	BRect draggerFrame(replicantFrame);
+	draggerFrame.top = draggerFrame.bottom - 7;
+	draggerFrame.left = draggerFrame.right - 7;
+	BDragger* replicantDragger = new BDragger(draggerFrame, fReplicantPreview,
+		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
+	fReplicantPreview->AddChild(replicantDragger);
+
 	// Every row defaults to layout weight 1.0, splitting extra vertical
 	// space equally - the single-line query/load-more/status rows were
 	// getting stretched exactly like the results list, which is why the
@@ -410,6 +429,10 @@ SearchWindow::SearchWindow()
 				.AddGlue()
 				.End()
 			.Add(fStatusView, 0.0f)
+			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
+				.Add(fReplicantPreview)
+				.AddGlue()
+				.End()
 			.End()
 		;
 
@@ -451,6 +474,8 @@ SearchWindow::_RunSearch()
 	BString queryString(fQueryControl->Text());
 	STRACE("query text = \"%s\" (length %ld)\n", queryString.String(),
 		(long)queryString.Length());
+	fReplicantPreview->SetQuery(queryString);
+
 	if (queryString.Length() == 0) {
 		// Nothing in flight is worth waiting for a reply to clear - do it
 		// now. Also bumps the token, so a reply for whatever was still

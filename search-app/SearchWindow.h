@@ -17,6 +17,7 @@ class BColumnListView;
 class BMessageRunner;
 class BTextControl;
 class BStringView;
+class SearchReplicantView;
 
 
 class SearchWindow : public BWindow {
@@ -40,6 +41,11 @@ private:
 			BColumnListView*	fResultsView;
 			BButton*			fLoadMoreButton;
 			BStringView*		fStatusView;
+				//! A live-updating preview of the current query, with a
+				//! BDragger handle to drag out onto the Desktop (or any
+				//! other BShelf) as a standalone replicant (issue #33) -
+				//! see SearchReplicantView.h.
+			SearchReplicantView*	fReplicantPreview;
 			bigtime_t			fSearchSentTime;
 			BMessageRunner*		fFilterRunner;
 			int32				fPendingQueryToken;
