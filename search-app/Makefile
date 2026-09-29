@@ -6,7 +6,8 @@ APP_MIME_SIG = application/x-vnd.Haiku-IndexServerSearch
 
 SRCS = \
 	IndexSearchApp.cpp \
-	SearchWindow.cpp
+	SearchWindow.cpp \
+	SearchReplicantView.cpp
 
 RDEFS = IndexServerSearch.rdef
 RSRCS =
