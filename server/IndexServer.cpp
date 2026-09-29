@@ -21,6 +21,19 @@
 #include "IndexServerPrivate.h"
 
 
+// index_server-internal only, unlike the kMsg* constants in
+// IndexServerPrivate.h - nothing outside IndexServer itself needs to know
+// about its own query monitor recheck pulse.
+static const uint32 kMsgQueryMonitorPulse = 'ISMt';
+
+// See fQueryMonitorsDirty's comment in IndexServer.h for why this is a
+// debounced pulse rather than a recheck straight from
+// kMsgIndexContentChanged - twice a second matches the cadence
+// IndexProgressNotifier's own kMinNotifyInterval already uses for a
+// similar "don't react to every single batch" reason.
+static const bigtime_t kQueryMonitorPulseInterval = 500000;
+
+
 VolumeObserverHandler::VolumeObserverHandler(IndexServer* indexServer)
 	:
 	fIndexServer(indexServer)
@@ -104,7 +117,10 @@ IndexServer::IndexServer(status_t& error)
 	BServer("application/x-vnd.Haiku-index_server", false, &error),
 	fVolumeObserverHandler(this),
 	fAddOnMonitorHandler(this),
-	fPulseRunner(NULL)
+	fPulseRunner(NULL),
+	fNextQueryMonitorToken(1),
+	fQueryMonitorsDirty(false),
+	fQueryMonitorPulseRunner(NULL)
 {
 	AddHandler(&fSettings);
 	AddHandler(&fVolumeObserverHandler);
@@ -126,6 +142,7 @@ IndexServer::~IndexServer()
 	_StopWatchingVolumes();
 
 	delete fPulseRunner;
+	delete fQueryMonitorPulseRunner;
 
 	fSettings.StopWatchingSettings();
 
@@ -189,6 +206,10 @@ IndexServer::ReadyToRun()
 	fSettings.StartWatchingSettings();
 	_StartWatchingAddOns();
 	_StartWatchingVolumes();
+
+	BMessage pulse(kMsgQueryMonitorPulse);
+	fQueryMonitorPulseRunner = new BMessageRunner(BMessenger(this), &pulse,
+		kQueryMonitorPulseInterval);
 }
 
 
@@ -227,12 +248,6 @@ IndexServer::MessageReceived(BMessage *message)
 			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
 				maxResults = requestedMax;
 
-			// Applied identically to every volume rather than as one
-			// combined offset into a globally-merged ranking - results
-			// still aren't merge-sorted by score across volumes (each
-			// volume's own hits are just concatenated, oldest limitation,
-			// not new here), so a per-volume offset is at least consistent
-			// with how results were already being combined.
 			int32 offset = 0;
 			int32 requestedOffset;
 			if (message->FindInt32("offset", &requestedOffset) == B_OK)
@@ -240,44 +255,7 @@ IndexServer::MessageReceived(BMessage *message)
 
 			bigtime_t queryStart = system_time();
 			BMessage reply(kMsgQueryReply);
-			int32 searchedVolumes = 0;
-			int32 totalHits = 0;
-			for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
-				VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
-
-				BMessage volumeQuery;
-				volumeQuery.AddString("query", queryString);
-				volumeQuery.AddInt32("maxResults", maxResults);
-				volumeQuery.AddInt32("offset", offset);
-				BMessage volumeReply;
-				bigtime_t volumeStart = system_time();
-				status_t status = watcher->HandleQuery(kFullTextAnalyserName,
-					volumeQuery, volumeReply);
-				STRACE("kMsgQuery: volume device %" B_PRId32
-					" HandleQuery took %" B_PRId64 " us, status %s\n",
-					watcher->Volume().Device(), system_time() - volumeStart,
-					strerror(status));
-				if (status != B_OK)
-					continue;
-				searchedVolumes++;
-
-				int32 volumeTotalHits;
-				if (volumeReply.FindInt32("totalHits", &volumeTotalHits)
-						== B_OK) {
-					totalHits += volumeTotalHits;
-				}
-
-				entry_ref ref;
-				float score;
-				for (int32 j = 0; volumeReply.FindRef("refs", j, &ref)
-						== B_OK; j++) {
-					volumeReply.FindFloat("scores", j, &score);
-					reply.AddRef("refs", &ref);
-					reply.AddFloat("scores", score);
-				}
-			}
-			reply.AddInt32("searchedVolumes", searchedVolumes);
-			reply.AddInt32("totalHits", totalHits);
+			_RunQuery(queryString, maxResults, offset, reply);
 
 			// Echoed back verbatim so a client that can have more than one
 			// query in flight (e.g. live-filter-while-typing) can tell a
@@ -291,6 +269,67 @@ IndexServer::MessageReceived(BMessage *message)
 			STRACE("kMsgQuery: total handling took %" B_PRId64 " us\n",
 				system_time() - queryStart);
 			message->SendReply(&reply);
+			break;
+		}
+
+		case kMsgStartQueryMonitor:
+		{
+			BString queryString;
+			message->FindString("query", &queryString);
+
+			int32 maxResults = 100;
+			int32 requestedMax;
+			if (message->FindInt32("maxResults", &requestedMax) == B_OK)
+				maxResults = requestedMax;
+
+			BMessenger target;
+			if (message->FindMessenger("target", &target) != B_OK)
+				break;
+
+			QueryMonitor monitor;
+			monitor.token = fNextQueryMonitorToken++;
+			monitor.query = queryString;
+			monitor.maxResults = maxResults;
+			monitor.target = target;
+			fQueryMonitors.push_back(monitor);
+
+			BMessage reply(kMsgStartQueryMonitorReply);
+			reply.AddInt32("monitorToken", monitor.token);
+			message->SendReply(&reply);
+
+			// The just-added monitor still has an empty lastMatches, so
+			// the very next recheck reports every current match as
+			// "added" - the initial push kMsgStartQueryMonitor's own
+			// comment promises, without a separate code path for it.
+			fQueryMonitorsDirty = true;
+			_RecheckQueryMonitors();
+			break;
+		}
+
+		case kMsgStopQueryMonitor:
+		{
+			int32 token;
+			if (message->FindInt32("monitorToken", &token) != B_OK)
+				break;
+			for (size_t i = 0; i < fQueryMonitors.size(); i++) {
+				if (fQueryMonitors[i].token == token) {
+					fQueryMonitors.erase(fQueryMonitors.begin() + i);
+					break;
+				}
+			}
+			break;
+		}
+
+		case kMsgIndexContentChanged:
+		{
+			fQueryMonitorsDirty = true;
+			break;
+		}
+
+		case kMsgQueryMonitorPulse:
+		{
+			if (fQueryMonitorsDirty)
+				_RecheckQueryMonitors();
 			break;
 		}
 
@@ -373,6 +412,13 @@ IndexServer::AddVolume(const BVolume& volume)
 	fVolumeWatcherList.AddItem(watcher);
 	_SetupVolumeWatcher(watcher);
 	watcher->StartWatching();
+
+	// A newly mounted volume can already hold a fully up to date on-disk
+	// index from a previous run (nothing for catch up to actually do, so
+	// no kMsgIndexContentChanged would ever follow) - a query monitor's
+	// results can still change purely by this volume becoming searchable
+	// at all, so mark dirty here too rather than relying on that message.
+	fQueryMonitorsDirty = true;
 }
 
 
@@ -394,6 +440,113 @@ IndexServer::RemoveVolume(const BVolume& volume)
 	watcher->Stop();
 	fVolumeWatcherList.RemoveItem(watcher);
 	watcher->PostMessage(B_QUIT_REQUESTED);
+
+	// Same reasoning as AddVolume() - a monitor's matches on this volume
+	// need to be reported as removed even though no single file changed.
+	fQueryMonitorsDirty = true;
+}
+
+
+void
+IndexServer::_RunQuery(const BString& queryString, int32 maxResults,
+	int32 offset, BMessage& reply)
+{
+	int32 searchedVolumes = 0;
+	int32 totalHits = 0;
+	for (int i = 0; i < fVolumeWatcherList.CountItems(); i++) {
+		VolumeWatcher* watcher = fVolumeWatcherList.ItemAt(i);
+
+		BMessage volumeQuery;
+		volumeQuery.AddString("query", queryString);
+		volumeQuery.AddInt32("maxResults", maxResults);
+		volumeQuery.AddInt32("offset", offset);
+		BMessage volumeReply;
+		status_t status = watcher->HandleQuery(kFullTextAnalyserName,
+			volumeQuery, volumeReply);
+		if (status != B_OK)
+			continue;
+		searchedVolumes++;
+
+		int32 volumeTotalHits;
+		if (volumeReply.FindInt32("totalHits", &volumeTotalHits) == B_OK)
+			totalHits += volumeTotalHits;
+
+		entry_ref ref;
+		float score;
+		for (int32 j = 0; volumeReply.FindRef("refs", j, &ref) == B_OK;
+				j++) {
+			volumeReply.FindFloat("scores", j, &score);
+			reply.AddRef("refs", &ref);
+			reply.AddFloat("scores", score);
+		}
+	}
+	reply.AddInt32("searchedVolumes", searchedVolumes);
+	reply.AddInt32("totalHits", totalHits);
+}
+
+
+void
+IndexServer::_RecheckQueryMonitors()
+{
+	fQueryMonitorsDirty = false;
+
+	for (size_t i = 0; i < fQueryMonitors.size(); /* incremented below */) {
+		QueryMonitor& monitor = fQueryMonitors[i];
+
+		BMessage reply;
+		_RunQuery(monitor.query, monitor.maxResults, 0, reply);
+
+		typedef std::map<BString, std::pair<entry_ref, float> > MatchMap;
+		MatchMap newMatches;
+		entry_ref ref;
+		float score;
+		for (int32 j = 0; reply.FindRef("refs", j, &ref) == B_OK; j++) {
+			reply.FindFloat("scores", j, &score);
+			BPath path(&ref);
+			newMatches[path.Path()] = std::make_pair(ref, score);
+		}
+
+		BMessage update(kMsgQueryMonitorUpdate);
+		update.AddInt32("monitorToken", monitor.token);
+		bool changed = false;
+
+		for (MatchMap::iterator it = newMatches.begin();
+				it != newMatches.end(); ++it) {
+			MatchMap::iterator old = monitor.lastMatches.find(it->first);
+			// A changed score is re-sent the same as a brand new match -
+			// see kMsgQueryMonitorUpdate's own comment for why there's no
+			// separate "updated" list.
+			if (old == monitor.lastMatches.end()
+					|| old->second.second != it->second.second) {
+				update.AddRef("addedRefs", &it->second.first);
+				update.AddFloat("addedScores", it->second.second);
+				changed = true;
+			}
+		}
+
+		for (MatchMap::iterator it = monitor.lastMatches.begin();
+				it != monitor.lastMatches.end(); ++it) {
+			if (newMatches.find(it->first) != newMatches.end())
+				continue;
+			// The entry_ref from when this was last seen matching, not a
+			// freshly resolved one - the file may already be gone from
+			// disk by now (that's often exactly why it stopped matching),
+			// so re-resolving it here could fail for the common case.
+			update.AddRef("removedRefs", &it->second.first);
+			changed = true;
+		}
+
+		monitor.lastMatches = newMatches;
+
+		if (changed && monitor.target.SendMessage(&update) != B_OK) {
+			// The target has quit - drop the monitor rather than keep
+			// rechecking its query forever for nobody.
+			fQueryMonitors.erase(fQueryMonitors.begin() + i);
+			continue;
+		}
+
+		i++;
+	}
 }
 
 

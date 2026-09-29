@@ -35,8 +35,8 @@ if [ "${HAIKU_ARCH:-}" = "x86" ]; then
   PKG_ADDONS_SUBDIR="add-ons/x86/index_server"
 fi
 
-TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests"
-BINARY_NAMES="index_server IndexServerTranslateHelper IndexServerThumbnailHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient"
+TARGETS="server translate-helper thumbnail-helper add-ons/fulltext add-ons/audiotags add-ons/exif add-ons/mediakit add-ons/mail add-ons/thumbnail preferences search-app tests tests/query-monitor-client"
+BINARY_NAMES="index_server IndexServerTranslateHelper IndexServerThumbnailHelper FullTextAnalyser AudioTagAnalyser ExifAnalyser MediaKitAnalyser MailAnalyser ThumbnailAnalyser IndexServerSettings IndexServerSearch QueryClient QueryMonitorClient"
 
 cmd="${1:-build}"
 
@@ -220,8 +220,10 @@ regression_test() {
   install
   ssh "$HAIKU_HOST" "rm -f ~/$SERVER_LOG $SETTINGS_FILE && \
     ($SERVER_DIR/index_server > ~/$SERVER_LOG 2>&1 &) && sleep 3"
-  QUERY_CLIENT="$(_objdir tests)/QueryClient" HAIKU_HOST="$HAIKU_HOST" \
-    FIXTURES_DIR="$FIXTURES_DIR" bash "$LOCAL_TREE/tests/run_tests.sh"
+  QUERY_CLIENT="$(_objdir tests)/QueryClient" \
+    QUERY_MONITOR_CLIENT="$(_objdir tests/query-monitor-client)/QueryMonitorClient" \
+    HAIKU_HOST="$HAIKU_HOST" FIXTURES_DIR="$FIXTURES_DIR" \
+    bash "$LOCAL_TREE/tests/run_tests.sh"
 }
 
 debug_report() {
