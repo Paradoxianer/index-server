@@ -331,7 +331,7 @@ FindMatchingLine(const BPath& path, const std::vector<BString>& words)
 
 SearchWindow::SearchWindow()
 	:
-	BWindow(BRect(80, 80, 660, 500), B_TRANSLATE_SYSTEM_NAME("Index Search"),
+	BWindow(BRect(80, 80, 660, 590), B_TRANSLATE_SYSTEM_NAME("Index Search"),
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS),
 	fFilterRunner(NULL)
 {
@@ -437,6 +437,18 @@ SearchWindow::SearchWindow()
 		;
 
 	fQueryControl->MakeFocus(true);
+
+	// Without an explicit minimum, nothing stops the user from shrinking
+	// the window below what the query row, status row and the fixed-size
+	// replicant preview (with its own BDragger handle) all need - once
+	// that happens the layout has no flexible space left to give up
+	// (fResultsView is already at its own minimum) and the lowest rows
+	// end up pushed below the window's own bottom edge instead, making
+	// the replicant preview - and the handle to drag it out with -
+	// invisible without the window looking obviously broken otherwise.
+	float minWidth, minHeight, maxWidth, maxHeight;
+	GetSizeLimits(&minWidth, &maxWidth, &minHeight, &maxHeight);
+	SetSizeLimits(minWidth, maxWidth, 400, maxHeight);
 }
 
 
