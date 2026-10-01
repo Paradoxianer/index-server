@@ -93,8 +93,10 @@ public:
 			void				AddVolume(const BVolume& volume);
 			void				RemoveVolume(const BVolume& volume);
 
-			void				RegisterAddOn(entry_ref ref);
-			void				UnregisterAddOn(entry_ref ref);
+			void				RegisterAddOn(entry_ref ref,
+									const node_ref& nodeRef);
+			void				UnregisterAddOn(entry_ref ref,
+									const node_ref& nodeRef);
 
 			//! thread safe
 			FileAnalyser*		CreateFileAnalyser(const BString& name,
