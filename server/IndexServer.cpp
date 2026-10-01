@@ -79,7 +79,7 @@ AnalyserMonitorHandler::AddOnEnabled(const add_on_entry_info* entryInfo)
 	entry_ref ref;
 	make_entry_ref(entryInfo->dir_nref.device, entryInfo->dir_nref.node,
 		entryInfo->name, &ref);
-	fIndexServer->RegisterAddOn(ref);
+	fIndexServer->RegisterAddOn(ref, entryInfo->nref);
 };
 
 
@@ -89,7 +89,7 @@ AnalyserMonitorHandler::AddOnDisabled(const add_on_entry_info* entryInfo)
 	entry_ref ref;
 	make_entry_ref(entryInfo->dir_nref.device, entryInfo->dir_nref.node,
 		entryInfo->name, &ref);
-	fIndexServer->UnregisterAddOn(ref);
+	fIndexServer->UnregisterAddOn(ref, entryInfo->nref);
 };
 
 
@@ -551,7 +551,7 @@ IndexServer::_RecheckQueryMonitors()
 
 
 void
-IndexServer::RegisterAddOn(entry_ref ref)
+IndexServer::RegisterAddOn(entry_ref ref, const node_ref& nodeRef)
 {
 	STRACE("RegisterAddOn %s\n", ref.name);
 
@@ -575,6 +575,7 @@ IndexServer::RegisterAddOn(entry_ref ref)
 		unload_add_on(image);
 		return;
 	}
+	addon->SetNodeRef(nodeRef);
 
 	// An atomic "cp file.new && mv file.new file" replace (exactly what
 	// dev.sh install does) delivers an ENTRY_CREATED for the new inode and
@@ -611,10 +612,26 @@ IndexServer::RegisterAddOn(entry_ref ref)
 
 
 void
-IndexServer::UnregisterAddOn(entry_ref ref)
+IndexServer::UnregisterAddOn(entry_ref ref, const node_ref& nodeRef)
 {
 	IndexServerAddOn* addon = _FindAddon(ref.name);
 	if (!addon)
+		return;
+
+	// The other half of the race RegisterAddOn()'s own comment describes
+	// (#43, following up on #14): this disable notification's nodeRef is
+	// whichever inode actually triggered it - by the time this runs, that
+	// could already be a stale, long-gone one, if the opposite ordering
+	// happened (old-removed arriving after new-created already replaced
+	// the fAddOnList entry under this same name). _FindAddon() can only
+	// match by name, so without this check a stale disable notification
+	// for an entry that's since been replaced would retire the brand new
+	// replacement instead - crashing later wherever something still holds
+	// a pointer into it, or segfaulting right here inside the delete if
+	// nothing else got to it first. A real removal's nodeRef always
+	// matches the entry _FindAddon() just found, since RegisterAddOn()
+	// stamped it there at registration time.
+	if (!(addon->NodeRef() == nodeRef))
 		return;
 
 	_RetireAddOn(addon);

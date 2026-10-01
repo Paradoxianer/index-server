@@ -13,6 +13,7 @@
 #include <Entry.h>
 #include <image.h>
 #include <Message.h>
+#include <Node.h>
 #include <ObjectList.h>
 #include <String.h>
 #include <Volume.h>
@@ -145,11 +146,24 @@ public:
 			image_id			ImageId() { return fImageId; }
 			BString				Name() { return fName; }
 
+			//! The entry this add-on was actually loaded from, set once by
+			//! IndexServer::RegisterAddOn() right after construction - not
+			//! part of the constructor itself since instantiate_index_
+			//! server_addon() (every add-on's own factory function) has no
+			//! reason to know about it. Lets UnregisterAddOn() tell a
+			//! stale disable notification for an entry that's since been
+			//! replaced apart from one for the entry actually registered
+			//! under this name right now - see its own comment (#43).
+			void				SetNodeRef(const node_ref& ref)
+									{ fNodeRef = ref; }
+			const node_ref&		NodeRef() const { return fNodeRef; }
+
 	virtual FileAnalyser*		CreateFileAnalyser(const BVolume& volume) = 0;
 
 private:
 		image_id				fImageId;
 		BString					fName;
+		node_ref				fNodeRef;
 };
 
 
