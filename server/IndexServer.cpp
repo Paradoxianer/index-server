@@ -645,8 +645,15 @@ IndexServer::_RetireAddOn(IndexServerAddOn* addon)
 		fVolumeWatcherList.ItemAt(i)->RemoveAnalyser(addon->Name());
 
 	fAddOnList.RemoveItem(addon);
-	unload_add_on(addon->ImageId());
+
+	// addon's own code - including its destructor and vtable - lives
+	// inside the shared object unload_add_on() below unmaps. Deleting it
+	// has to happen while that code is still mapped; the image_id is
+	// cheap to capture into a local first, nothing about it depends on
+	// the object still being alive (see #45).
+	image_id image = addon->ImageId();
 	delete addon;
+	unload_add_on(image);
 }
 
 
