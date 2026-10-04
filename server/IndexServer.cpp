@@ -641,10 +641,15 @@ IndexServer::UnregisterAddOn(entry_ref ref, const node_ref& nodeRef)
 void
 IndexServer::_RetireAddOn(IndexServerAddOn* addon)
 {
-	for (int i = 0; i < fVolumeWatcherList.CountItems(); i++)
-		fVolumeWatcherList.ItemAt(i)->RemoveAnalyser(addon->Name());
+	// Only the list owns the object - if it's no longer there, an earlier
+	// notification already retired it, and touching it again (even just
+	// reading Name()) would be a use-after-free.
+	if (!fAddOnList.RemoveItem(addon))
+		return;
 
-	fAddOnList.RemoveItem(addon);
+	BString name = addon->Name();
+	for (int i = 0; i < fVolumeWatcherList.CountItems(); i++)
+		fVolumeWatcherList.ItemAt(i)->RemoveAnalyser(name);
 
 	// addon's own code - including its destructor and vtable - lives
 	// inside the shared object unload_add_on() below unmaps. Deleting it
