@@ -225,13 +225,12 @@ SearchWindow::SearchWindow()
 
 	fQueryControl->MakeFocus(true);
 
-	// Keeps the query row, status row and results list usable when the
-	// window is shrunk - the results list only ever gives up space down to
-	// its own minimum, so without a window minimum the lower rows could be
-	// pushed out of view.
+	// Small enough to be dragged down to replicant size - the layout still
+	// keeps each row at its own minimum, so the window never gets smaller
+	// than its query row and status row need.
 	float minWidth, minHeight, maxWidth, maxHeight;
 	GetSizeLimits(&minWidth, &maxWidth, &minHeight, &maxHeight);
-	SetSizeLimits(minWidth, maxWidth, 400, maxHeight);
+	SetSizeLimits(160, maxWidth, 120, maxHeight);
 }
 
 
