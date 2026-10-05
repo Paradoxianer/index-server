@@ -195,6 +195,7 @@ package() {
       $PKG_STAGE_DIR/$PKG_ADDONS_SUBDIR/ && \
     cp $(_robjdir preferences)/IndexServerSettings $PKG_STAGE_DIR/preferences/ && \
     cp $(_robjdir search-app)/IndexServerSearch $PKG_STAGE_DIR/apps/ && \
+    mimeset -f $PKG_STAGE_DIR/apps/IndexServerSearch $PKG_STAGE_DIR/preferences/IndexServerSettings $PKG_STAGE_DIR/servers/* $PKG_STAGE_DIR/$PKG_ADDONS_SUBDIR/* && \
     rm -f ~/$PKG_NAME.hpkg && \
     cd $PKG_STAGE_DIR && \
     package create -i ~/$PKG_NAME.PackageInfo -C . ~/$PKG_NAME.hpkg"
