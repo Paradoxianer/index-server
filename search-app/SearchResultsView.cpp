@@ -291,13 +291,22 @@ SearchResultsView::_Init()
 
 	// Hangs off the list's own corner, so dragging the handle drags the
 	// whole list - what gets archived, and later instantiated on the
-	// Desktop, is this view (see Archive()). B_FOLLOW_NONE because its
-	// position is kept correct by hand, in _PositionDragger() - the
-	// window-embedded list is still 0x0 here (its real size only exists
-	// once the window's layout pass runs, well after this constructor),
-	// so there's no correct corner to compute yet at this point anyway.
+	// Desktop, is this view (see Archive()). _PositionDragger() gives it
+	// a best-effort initial placement (exact for the replicant case,
+	// whose ResizeTo() already ran by the time this constructor runs -
+	// see the BMessage constructor above; the window-embedded list is
+	// still 0x0 here, its real size only existing once the window's
+	// layout pass runs well after this constructor, so there's no
+	// correct corner to compute yet in that case). B_FOLLOW_RIGHT|
+	// B_FOLLOW_BOTTOM then keeps it pinned to the corner from then on -
+	// this is load-bearing, not just a later-resize nicety:
+	// BColumnListView turns out not to invoke the FrameResized() hook
+	// the usual BView resize notification would, so follow-mode (handled
+	// by the interface kit independently of that hook) is the only thing
+	// that actually corrects an initial placement made against a 0x0
+	// parent once the real layout size lands.
 	fDragger = new BDragger(BRect(0, 0, kDraggerSize - 1, kDraggerSize - 1),
-		this, B_FOLLOW_NONE);
+		this, B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
 	AddChild(fDragger);
 	_PositionDragger();
 }
