@@ -12,12 +12,8 @@
 #include <vector>
 
 #include <Application.h>
-#include <Bitmap.h>
 #include <Button.h>
 #include <Catalog.h>
-#include <ColumnListView.h>
-#include <ColumnTypes.h>
-#include <Dragger.h>
 #include <Entry.h>
 #include <File.h>
 #include <LayoutBuilder.h>
@@ -35,7 +31,7 @@
 #include <TextControl.h>
 
 #include "IndexServerPrivate.h"
-#include "SearchReplicantView.h"
+#include "SearchResultsView.h"
 
 
 #define DEBUG_SEARCH_WINDOW
@@ -64,12 +60,6 @@ static const uint32 kMsgAbout = 'AbtR';
 // by messaging Tracker rather than launching an app directly.
 static const char* const kTrackerSignature = "application/x-vnd.Be-TRAK";
 
-static const int32 kNameColumn = 0;
-static const int32 kLocationColumn = 1;
-static const int32 kScoreColumn = 2;
-static const int32 kSizeColumn = 3;
-static const int32 kModifiedColumn = 4;
-static const int32 kKindColumn = 5;
 
 // Long enough that a fast typist's keystrokes collapse into one search
 // instead of one round trip per character; short enough to still feel
@@ -87,162 +77,6 @@ static const off_t kMaxLineSearchFileSize = 8 * 1024 * 1024;
 
 
 namespace {
-
-
-// Combines an icon with the filename in one field, the same approach
-// DriveSetup's PartitionList.cpp uses - the stock ColumnTypes.h only
-// offers BBitmapField and BStringField separately, not a field type
-// that draws both together.
-class IconStringField : public BStringField {
-public:
-	IconStringField(BBitmap* bitmap, const char* string)
-		:
-		BStringField(string),
-		fBitmap(bitmap)
-	{
-	}
-
-	virtual ~IconStringField()
-	{
-		delete fBitmap;
-	}
-
-	const BBitmap* Bitmap() const
-	{
-		return fBitmap;
-	}
-
-private:
-	BBitmap* fBitmap;
-};
-
-
-// Draws an IconStringField's bitmap and text side by side. Subclassing
-// BStringColumn (rather than BTitledColumn directly, as DriveSetup does)
-// means CompareFields() and AcceptsField() - both string-based - come for
-// free; only the drawing needs to account for the icon.
-class IconNameColumn : public BStringColumn {
-public:
-	IconNameColumn(const char* title, float width, float minWidth,
-		float maxWidth, uint32 truncateMode)
-		:
-		BStringColumn(title, width, minWidth, maxWidth, truncateMode)
-	{
-	}
-
-	virtual void DrawField(BField* field, BRect rect, BView* parent)
-	{
-		IconStringField* iconField = dynamic_cast<IconStringField*>(field);
-		if (iconField == NULL) {
-			BStringColumn::DrawField(field, rect, parent);
-			return;
-		}
-
-		const BBitmap* bitmap = iconField->Bitmap();
-		const float kIconTextGap = 4.0f;
-		float iconWidth = bitmap != NULL ? bitmap->Bounds().Width() + 1 : 0;
-
-		if (bitmap != NULL) {
-			float y = rect.top
-				+ (rect.Height() - bitmap->Bounds().Height()) / 2;
-			parent->SetDrawingMode(B_OP_ALPHA);
-			parent->DrawBitmap(bitmap, BPoint(rect.left, y));
-			parent->SetDrawingMode(B_OP_OVER);
-		}
-
-		BRect textRect(rect);
-		textRect.left += iconWidth + kIconTextGap;
-
-		float width = textRect.Width();
-		if (width != iconField->Width()) {
-			BString truncated(iconField->String());
-			parent->TruncateString(&truncated, B_TRUNCATE_MIDDLE, width + 2);
-			iconField->SetClippedString(truncated.String());
-			iconField->SetWidth(width);
-		}
-		DrawString(iconField->ClippedString(), parent, textRect);
-	}
-
-	virtual float GetPreferredWidth(BField* field, BView* parent) const
-	{
-		IconStringField* iconField = dynamic_cast<IconStringField*>(field);
-		if (iconField == NULL)
-			return BStringColumn::GetPreferredWidth(field, parent);
-
-		float width = BStringColumn::GetPreferredWidth(field, parent);
-		const BBitmap* bitmap = iconField->Bitmap();
-		if (bitmap != NULL)
-			width += bitmap->Bounds().Width() + 5;
-		return width;
-	}
-};
-
-
-// Scores are formatted text ("0.85"), but sorting them as text would put
-// "10.00" before "2.00" - compare the actual numeric value instead.
-class ScoreColumn : public BStringColumn {
-public:
-	ScoreColumn(const char* title, float width, float minWidth,
-		float maxWidth, uint32 truncateMode)
-		:
-		BStringColumn(title, width, minWidth, maxWidth, truncateMode)
-	{
-	}
-
-	virtual int CompareFields(BField* field1, BField* field2)
-	{
-		double value1 = atof(((BStringField*)field1)->String());
-		double value2 = atof(((BStringField*)field2)->String());
-		if (value1 < value2)
-			return -1;
-		if (value1 > value2)
-			return 1;
-		return 0;
-	}
-};
-
-
-// Keeps the entry_ref a row was built from, so opening it doesn't need to
-// reconstruct a path from truncated/split display text.
-class ResultRow : public BRow {
-public:
-	ResultRow(const entry_ref& ref)
-		:
-		BRow(),
-		fRef(ref)
-	{
-	}
-
-	const entry_ref& Ref() const
-	{
-		return fRef;
-	}
-
-private:
-	entry_ref fRef;
-};
-
-
-// Same source Tracker's own "Kind" column uses: the MIME type's
-// registered short description ("JPEG image"), falling back to the raw
-// MIME string if the type isn't registered with one, and finally to
-// nothing at all rather than a placeholder for a file with no MIME type.
-BString
-KindDescriptionFor(const entry_ref& ref)
-{
-	BNode node(&ref);
-	BNodeInfo nodeInfo(&node);
-	char mimeType[B_MIME_TYPE_LENGTH];
-	if (node.InitCheck() != B_OK || nodeInfo.GetType(mimeType) != B_OK)
-		return BString();
-
-	BMimeType type(mimeType);
-	char description[B_MIME_TYPE_LENGTH];
-	if (type.GetShortDescription(description) == B_OK)
-		return BString(description);
-
-	return BString(mimeType);
-}
 
 
 // Lucene query syntax (AND/OR/NOT, +required/-excluded, "phrases", a
@@ -331,7 +165,7 @@ FindMatchingLine(const BPath& path, const std::vector<BString>& words)
 
 SearchWindow::SearchWindow()
 	:
-	BWindow(BRect(80, 80, 660, 590), B_TRANSLATE_SYSTEM_NAME("Index Search"),
+	BWindow(BRect(80, 80, 660, 500), B_TRANSLATE_SYSTEM_NAME("Index Search"),
 		B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS),
 	fFilterRunner(NULL)
 {
@@ -351,34 +185,8 @@ SearchWindow::SearchWindow()
 	BButton* searchButton = new BButton("search", B_TRANSLATE("Search"),
 		new BMessage(kMsgSearch));
 
-	fResultsView = new BColumnListView("results", B_NAVIGABLE, B_PLAIN_BORDER);
-	fResultsView->AddColumn(new IconNameColumn(B_TRANSLATE("Name"), 220, 100,
-		600, B_TRUNCATE_MIDDLE), kNameColumn);
-	fResultsView->AddColumn(new BStringColumn(B_TRANSLATE("Location"), 260,
-		100, 2000, B_TRUNCATE_MIDDLE), kLocationColumn);
-	fResultsView->AddColumn(new ScoreColumn(B_TRANSLATE("Score"), 60, 40,
-		120, B_TRUNCATE_END), kScoreColumn);
-
-	// Off by default (right-click the header to bring them back, a
-	// BColumnListView feature that needs no extra code here) - Score and
-	// Location cover the common case, and a column full of icon-sized
-	// bitmaps doesn't get much wider by showing more of them at once.
-	BSizeColumn* sizeColumn = new BSizeColumn(B_TRANSLATE("Size"), 70, 40,
-		200);
-	fResultsView->AddColumn(sizeColumn, kSizeColumn);
-	sizeColumn->SetVisible(false);
-
-	BDateColumn* modifiedColumn = new BDateColumn(B_TRANSLATE("Modified"),
-		140, 100, 300);
-	fResultsView->AddColumn(modifiedColumn, kModifiedColumn);
-	modifiedColumn->SetVisible(false);
-
-	BStringColumn* kindColumn = new BStringColumn(B_TRANSLATE("Kind"), 140,
-		80, 300, B_TRUNCATE_END);
-	fResultsView->AddColumn(kindColumn, kKindColumn);
-	kindColumn->SetVisible(false);
+	fResultsView = new SearchResultsView("results");
 	fResultsView->SetInvocationMessage(new BMessage(kMsgOpenResult));
-	fResultsView->SetSortingEnabled(true);
 
 	fLoadMoreButton = new BButton("loadMore", B_TRANSLATE("Load more results"),
 		new BMessage(kMsgLoadMore));
@@ -390,23 +198,6 @@ SearchWindow::SearchWindow()
 
 	fStatusView = new BStringView("status", "");
 	fStatusView->SetAlignment(B_ALIGN_LEFT);
-
-	// A live-updating preview of the current query, draggable out onto
-	// the Desktop as a standalone replicant (issue #33) - see
-	// SearchReplicantView.h. Pinned to a fixed size regardless of the
-	// window's own size: it's a small corner widget, not meant to grow
-	// into the space a wide results window has to spare.
-	BRect replicantFrame(0, 0, 219, 69);
-	fReplicantPreview = new SearchReplicantView(replicantFrame, "");
-	fReplicantPreview->SetExplicitMinSize(BSize(220, 70));
-	fReplicantPreview->SetExplicitMaxSize(BSize(220, 70));
-
-	BRect draggerFrame(replicantFrame);
-	draggerFrame.top = draggerFrame.bottom - 7;
-	draggerFrame.left = draggerFrame.right - 7;
-	BDragger* replicantDragger = new BDragger(draggerFrame, fReplicantPreview,
-		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	fReplicantPreview->AddChild(replicantDragger);
 
 	// Every row defaults to layout weight 1.0, splitting extra vertical
 	// space equally - the single-line query/load-more/status rows were
@@ -429,26 +220,17 @@ SearchWindow::SearchWindow()
 				.AddGlue()
 				.End()
 			.Add(fStatusView, 0.0f)
-			.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING, 0.0f)
-				.Add(fReplicantPreview)
-				.AddGlue()
-				.End()
 			.End()
 		;
 
 	fQueryControl->MakeFocus(true);
 
-	// Without an explicit minimum, nothing stops the user from shrinking
-	// the window below what the query row, status row and the fixed-size
-	// replicant preview (with its own BDragger handle) all need - once
-	// that happens the layout has no flexible space left to give up
-	// (fResultsView is already at its own minimum) and the lowest rows
-	// end up pushed below the window's own bottom edge instead, making
-	// the replicant preview - and the handle to drag it out with -
-	// invisible without the window looking obviously broken otherwise.
+	// Small enough to be dragged down to replicant size - the layout still
+	// keeps each row at its own minimum, so the window never gets smaller
+	// than its query row and status row need.
 	float minWidth, minHeight, maxWidth, maxHeight;
 	GetSizeLimits(&minWidth, &maxWidth, &minHeight, &maxHeight);
-	SetSizeLimits(minWidth, maxWidth, 400, maxHeight);
+	SetSizeLimits(160, maxWidth, 120, maxHeight);
 }
 
 
@@ -486,7 +268,7 @@ SearchWindow::_RunSearch()
 	BString queryString(fQueryControl->Text());
 	STRACE("query text = \"%s\" (length %ld)\n", queryString.String(),
 		(long)queryString.Length());
-	fReplicantPreview->SetQuery(queryString);
+	fResultsView->SetQuery(queryString);
 
 	if (queryString.Length() == 0) {
 		// Nothing in flight is worth waiting for a reply to clear - do it
@@ -494,11 +276,7 @@ SearchWindow::_RunSearch()
 		// outstanding gets dropped as stale instead of repopulating a
 		// list the user just emptied.
 		++fPendingQueryToken;
-		for (int32 i = fResultsView->CountRows() - 1; i >= 0; i--) {
-			BRow* row = fResultsView->RowAt(i);
-			fResultsView->RemoveRow(row);
-			delete row;
-		}
+		fResultsView->ClearResults();
 		if (!fLoadMoreButton->IsHidden())
 			fLoadMoreButton->Hide();
 		fCurrentOffset = 0;
@@ -589,11 +367,7 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 	// reply for the current query text - now that replacement rows are
 	// actually ready, clear whatever the previous query left behind.
 	if (fCurrentOffset == 0) {
-		for (int32 i = fResultsView->CountRows() - 1; i >= 0; i--) {
-			BRow* row = fResultsView->RowAt(i);
-			fResultsView->RemoveRow(row);
-			delete row;
-		}
+		fResultsView->ClearResults();
 	}
 
 	entry_ref ref;
@@ -601,38 +375,7 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 	int32 count = 0;
 	for (int32 i = 0; reply->FindRef("refs", i, &ref) == B_OK; i++) {
 		reply->FindFloat("scores", i, &score);
-
-		BPath path(&ref);
-		BPath parent;
-		path.GetParent(&parent);
-		STRACE("result %ld: %s (score %.3f)\n", (long)i, path.Path(), score);
-
-		BBitmap* icon = new BBitmap(BRect(0, 0, 15, 15), B_RGBA32);
-		if (BNodeInfo::GetTrackerIcon(&ref, icon, B_MINI_ICON) != B_OK) {
-			delete icon;
-			icon = NULL;
-		}
-
-		ResultRow* row = new ResultRow(ref);
-		row->SetField(new IconStringField(icon, ref.name), kNameColumn);
-		row->SetField(new BStringField(parent.Path()), kLocationColumn);
-		BString scoreText;
-		scoreText.SetToFormat("%.2f", score);
-		row->SetField(new BStringField(scoreText.String()), kScoreColumn);
-
-		BEntry entry(&ref);
-		off_t size = 0;
-		entry.GetSize(&size);
-		row->SetField(new BSizeField(size), kSizeColumn);
-
-		time_t modified = 0;
-		entry.GetModificationTime(&modified);
-		row->SetField(new BDateField(&modified), kModifiedColumn);
-
-		row->SetField(new BStringField(KindDescriptionFor(ref)),
-			kKindColumn);
-
-		fResultsView->AddRow(row);
+		fResultsView->AddResult(ref, score);
 		count++;
 	}
 	fCurrentOffset += count;
@@ -668,11 +411,9 @@ SearchWindow::_HandleQueryReply(BMessage* reply)
 void
 SearchWindow::_OpenSelected()
 {
-	ResultRow* row = static_cast<ResultRow*>(fResultsView->CurrentSelection());
-	if (row == NULL)
+	entry_ref ref;
+	if (!fResultsView->GetSelectedRef(&ref))
 		return;
-
-	entry_ref ref = row->Ref();
 
 	BNode node(&ref);
 	BNodeInfo nodeInfo(&node);

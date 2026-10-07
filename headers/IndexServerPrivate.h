@@ -26,7 +26,7 @@ const BString kIndexServerSignature = "application/x-vnd.Haiku-index_server";
 // every component's About window (see AboutRequested() in IndexServer.cpp,
 // IndexSearchApp.cpp and IndexServerPreflet.cpp) so it's visible without
 // needing to check which package is installed.
-const BString kIndexServerVersion = "1.0.0-7";
+const BString kIndexServerVersion = "1.0.0-8";
 
 // Where dev.sh installs the standalone translator-isolation helper (see
 // add-ons/shared/RunTranslatorHelper.h) - the same directory as

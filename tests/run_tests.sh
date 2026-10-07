@@ -41,6 +41,17 @@ server_alive() {
 
 echo "=== index_server regression tests (run $RUN_ID) ==="
 
+# The server was just (re)started (dev.sh's regression_test() always does
+# a fresh stop+install+start) - if any watched volume has a backlog (a
+# full source tree attached to the test VM, say), it can hold the CLucene
+# write lock catching up for long enough that every test below would
+# otherwise time out waiting for a file that was never actually missed,
+# just queued behind that backlog. Wait for it to actually go idle rather
+# than guessing a fixed sleep - cheap once it's already idle (one quick
+# status round trip), the only thing that saves time when there's nothing
+# to wait for.
+ssh "$HAIKU_HOST" "$QUERY_CLIENT --wait-idle 300" || true
+
 ssh "$HAIKU_HOST" "mkdir -p $TEST_DIR"
 
 # --- Test 1: basic indexing -------------------------------------------
