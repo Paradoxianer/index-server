@@ -228,9 +228,9 @@ SearchResultsView::SearchResultsView(const char* name)
 	:
 	BColumnListView(name, B_NAVIGABLE, B_PLAIN_BORDER),
 	fMonitorToken(-1),
-	fLive(false)
+	fDragger(NULL)
 {
-	_Init(false);
+	_Init();
 }
 
 
@@ -238,7 +238,7 @@ SearchResultsView::SearchResultsView(BMessage* archive)
 	:
 	BColumnListView("results", B_NAVIGABLE, B_PLAIN_BORDER),
 	fMonitorToken(-1),
-	fLive(true)
+	fDragger(NULL)
 {
 	archive->FindString("query", &fQuery);
 
@@ -248,7 +248,7 @@ SearchResultsView::SearchResultsView(BMessage* archive)
 	else
 		ResizeTo(kReplicantWidth, kReplicantHeight);
 
-	_Init(true);
+	_Init();
 }
 
 
@@ -258,7 +258,7 @@ SearchResultsView::~SearchResultsView()
 
 
 void
-SearchResultsView::_Init(bool live)
+SearchResultsView::_Init()
 {
 	AddColumn(new IconNameColumn(B_TRANSLATE("Name"), 220, 100, 600,
 		B_TRUNCATE_MIDDLE), kNameColumn);
@@ -291,15 +291,35 @@ SearchResultsView::_Init(bool live)
 
 	// Hangs off the list's own corner, so dragging the handle drags the
 	// whole list - what gets archived, and later instantiated on the
-	// Desktop, is this view (see Archive()).
-	BRect draggerFrame(0, 0, kDraggerSize - 1, kDraggerSize - 1);
-	draggerFrame.OffsetTo(kReplicantWidth - kDraggerSize,
-		kReplicantHeight - kDraggerSize);
-	BDragger* dragger = new BDragger(draggerFrame, this,
-		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
-	AddChild(dragger);
+	// Desktop, is this view (see Archive()). B_FOLLOW_NONE because its
+	// position is kept correct by hand, in _PositionDragger() - the
+	// window-embedded list is still 0x0 here (its real size only exists
+	// once the window's layout pass runs, well after this constructor),
+	// so there's no correct corner to compute yet at this point anyway.
+	fDragger = new BDragger(BRect(0, 0, kDraggerSize - 1, kDraggerSize - 1),
+		this, B_FOLLOW_NONE);
+	AddChild(fDragger);
+	_PositionDragger();
+}
 
-	fLive = live;
+
+void
+SearchResultsView::_PositionDragger()
+{
+	if (fDragger == NULL)
+		return;
+
+	BRect bounds(Bounds());
+	fDragger->MoveTo(bounds.right - kDraggerSize + 1,
+		bounds.bottom - kDraggerSize + 1);
+}
+
+
+void
+SearchResultsView::FrameResized(float width, float height)
+{
+	BColumnListView::FrameResized(width, height);
+	_PositionDragger();
 }
 
 
@@ -414,12 +434,10 @@ SearchResultsView::SetQuery(const BString& query)
 		return;
 
 	fQuery = query;
-	if (fLive) {
-		_StopMonitor();
-		ClearResults();
-		if (Window() != NULL)
-			_StartMonitor();
-	}
+	_StopMonitor();
+	ClearResults();
+	if (Window() != NULL)
+		_StartMonitor();
 }
 
 
@@ -509,7 +527,7 @@ SearchResultsView::GetSelectedRef(entry_ref* ref) const
 void
 SearchResultsView::_StartMonitor()
 {
-	if (!fLive || fQuery.Length() == 0)
+	if (fQuery.Length() == 0)
 		return;
 
 	BMessenger indexServer(kIndexServerSignature.String());

@@ -13,6 +13,9 @@
 #include <String.h>
 
 
+class BDragger;
+
+
 /*! The search results list (issue #33). The same view serves two roles:
 
 - Inside IndexSearchApp's own window, filled from kMsgQuery replies
@@ -21,6 +24,11 @@
   handle in its corner. The archived copy records only the query; once
   instantiated on the Desktop it registers its own query monitor (issue
   #19) and keeps itself current from the pushed updates.
+
+Both roles stay live via the same query monitor (issue #19) - not just
+the replicant - so a search left open in the window keeps gaining and
+losing rows as matching files change, the same as a dropped copy of it
+would.
 
 Follows the Archive()/Instantiate()/BDragger pattern of Haiku replicants
 (see src/apps/deskcalc/CalcView.cpp), with the same "add_on" rule: the
@@ -38,6 +46,7 @@ public:
 	virtual	void				AttachedToWindow();
 	virtual	void				DetachedFromWindow();
 	virtual	void				MessageReceived(BMessage* message);
+	virtual	void				FrameResized(float width, float height);
 
 			void				SetQuery(const BString& query);
 			const BString&		Query() const;
@@ -51,14 +60,20 @@ public:
 			bool				GetSelectedRef(entry_ref* ref) const;
 
 private:
-			void				_Init(bool live);
+			void				_Init();
+			//! Keeps the handle pinned to the bottom-right corner - called
+			//! on construction and from FrameResized(), since the view's
+			//! real size usually isn't known yet at construction time (the
+			//! window-embedded list is still 0x0 until the window's layout
+			//! pass runs).
+			void				_PositionDragger();
 			void				_StartMonitor();
 			void				_StopMonitor();
 			void				_OpenRow(const entry_ref& ref);
 
 			BString				fQuery;
 			int32				fMonitorToken;
-			bool				fLive;
+			BDragger*			fDragger;
 };
 
 
