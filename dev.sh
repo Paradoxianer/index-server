@@ -89,7 +89,17 @@ install() {
 }
 
 stop() {
-  ssh "$HAIKU_HOST" "pid=\$(ps | awk '\$1 == \"$SERVER_DIR/index_server\" {print \$2}'); \
+  # Matches any running index_server, packaged or non-packaged - once a
+  # packaged copy is installed (./dev.sh package-install, or a real
+  # release) it can be the one actually running, at a path this never
+  # used to look for. Leaving it running meant a dev start right after
+  # silently did nothing (B_EXCLUSIVE_LAUNCH - the registrar just
+  # activates the already-running one instead of starting a second), so
+  # tests kept talking to a stale server none of this just-built/installed
+  # code was in. Matched by exact basename so the TranslateHelper/
+  # ThumbnailHelper processes (different final path component) are left
+  # alone.
+  ssh "$HAIKU_HOST" "pid=\$(ps | awk '\$1 ~ /\\/index_server\$/ {print \$2}'); \
     if [ -z \"\$pid\" ]; then echo 'index_server: not running'; \
     else \
       kill \$pid; \
@@ -128,7 +138,7 @@ debug_log() {
 }
 
 status() {
-  ssh "$HAIKU_HOST" "ps | grep '$SERVER_DIR/index_server' || echo 'index_server: not running'; \
+  ssh "$HAIKU_HOST" "ps | grep -E '/index_server\$' || echo 'index_server: not running'; \
     echo '--- log (live) ---'; \
     cat ~/$SERVER_LOG 2>&1"
 }
